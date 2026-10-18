@@ -1,5 +1,11 @@
 # CR-2026-10-18-001 - Preservacao no GitHub e guia para MacBook
 
+**Destino corrigido:** este registro descreve o primeiro envio, retirado a
+pedido do usuario. O destino atual e o repositorio pessoal privado
+matheus00M7/emps-ecosystem-macbook, branch main. Consulte
+[CR-2026-10-18-002](CR-2026-10-18-002-personal-repository.md). As referencias
+ao repositorio publico abaixo sao historicas, nao instrucoes de envio.
+
 ## Pedido e destino
 
 Consolidar o trabalho local de site, app, API e documentacao no repositorio

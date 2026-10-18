@@ -32,16 +32,18 @@ misture as versoes de React do aplicativo com as do site.
 
 ## Comecar em outro computador
 
+**Repositorio pessoal privado:** https://github.com/matheus00M7/emps-ecosystem-macbook
+
 **MacBook:** siga [Instalacao no macOS](docs/MACBOOK_SETUP.md), que inclui o
-clone da branch `codex/app-review-2026-10-15` com as melhorias recentes do app.
+clone da `main` deste repositorio com as melhorias recentes do app.
 Os iniciadores PowerShell abaixo sao do Windows, nao instrucoes para macOS.
 
 Requisitos: Git, Node.js 22+, npm, Python 3.12, PowerShell e Docker Desktop
 para o banco local. Consulte [Execucao local](STARTUP.md) antes de iniciar.
 
 ```powershell
-git clone https://github.com/TommasoNagliatti/EMPS-Ecosystem.git
-cd EMPS-Ecosystem
+git clone https://github.com/matheus00M7/emps-ecosystem-macbook.git
+cd emps-ecosystem-macbook
 .\scripts\setup-local.ps1
 ```
 

@@ -51,20 +51,26 @@ Referencias oficiais:
 
 ## 2. Clonar a versao certa
 
-As melhorias locais estao na branch abaixo, nao necessariamente na main:
+As melhorias locais estao na main deste novo repositorio pessoal privado:
 
 ```sh
-git clone --branch codex/app-review-2026-10-15 https://github.com/TommasoNagliatti/EMPS-Ecosystem.git
-cd EMPS-Ecosystem
+git clone https://github.com/matheus00M7/emps-ecosystem-macbook.git
+cd emps-ecosystem-macbook
 git branch --show-current
 git status --short
 ```
 
-Essa branch preserva o estado deste PC, baseado em 6d5c0f8. Ha trabalho posterior
-dos colegas nas branches integration/gie-v3-multistation e
-feat/gie-demo-history-mysql. Nao combinar/substituir essas versoes automaticamente.
-Clonar este repositorio publico nao exige senha; para enviar alteracoes sera
-preciso autenticar a conta GitHub com permissao no repositorio.
+Essa main preserva o estado deste PC, baseado em 6d5c0f8. No repositorio original
+do Tommaso ha trabalho posterior dos colegas nas branches
+integration/gie-v3-multistation e feat/gie-demo-history-mysql. Essas branches nao
+foram copiadas nem integradas nesta transferencia. Nao combinar/substituir essas
+versoes automaticamente.
+
+O repositorio pessoal e privado: autentique no Mac com a conta matheus00M7 ou
+outra conta explicitamente autorizada, por GitHub Desktop, SSH ou autenticacao
+HTTPS compativel. A senha comum da conta GitHub nao funciona como senha Git.
+O origin deve apontar somente para matheus00M7/emps-ecosystem-macbook, nao para
+o Tommaso. O envio anterior foi retirado de la; consulte a CR-2026-10-18-002.
 
 ## 3. Escolher o ambiente
 
@@ -261,4 +267,5 @@ nem ativa os ajustes de pagamento na API oficial.
 - Capturas e relatorios privados com identificadores operacionais.
 
 Mantenha o PC antigo ate configurar e verificar o Mac. Transfira documentos
-privados necessarios por um canal privado, separado do repositorio publico.
+privados necessarios por um canal privado, separado do Git. Mesmo privado, este
+repositorio nao deve receber senhas, chaves ou dumps operacionais.

@@ -1,5 +1,7 @@
 # Documentacao EMPS
 
+[Repositorio pessoal privado e retirada do envio incorreto](change-requests/CR-2026-10-18-002-personal-repository.md).
+
 [Publicacao para continuar no MacBook, com limites de integracao](change-requests/CR-2026-10-18-001-github-macbook.md).
 [Instalar e executar no MacBook](MACBOOK_SETUP.md).
 
