@@ -2,7 +2,8 @@
 
 Site de operacao, aplicativo de recarga, API e gerenciamento inteligente de
 energia em um unico repositorio. Esta copia inclui o trabalho consolidado ate
-13/10/2026. O projeto ainda e um prototipo: publicacao de codigo nao equivale a
+18/10/2026, incluindo as revisoes do app de 15 e 16/10. O projeto ainda e um
+prototipo: publicacao de codigo nao equivale a
 deploy, homologacao de equipamentos ou integracao oficial com a GoodWe.
 
 ## Estrutura
@@ -30,6 +31,10 @@ site, API, app e GIE. As dependencias continuam separadas: nao ha hoisting que
 misture as versoes de React do aplicativo com as do site.
 
 ## Comecar em outro computador
+
+**MacBook:** siga [Instalacao no macOS](docs/MACBOOK_SETUP.md), que inclui o
+clone da branch `codex/app-review-2026-10-15` com as melhorias recentes do app.
+Os iniciadores PowerShell abaixo sao do Windows, nao instrucoes para macOS.
 
 Requisitos: Git, Node.js 22+, npm, Python 3.12, PowerShell e Docker Desktop
 para o banco local. Consulte [Execucao local](STARTUP.md) antes de iniciar.

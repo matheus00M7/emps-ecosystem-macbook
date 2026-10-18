@@ -24,7 +24,7 @@
       "adaptiveIcon": {
         "backgroundColor": "#0B0C0F",
         "foregroundImage": "./assets/images/emps-adaptive-foreground.png",
-        "monochromeImage": "./assets/images/emps-adaptive-foreground.png"
+        "monochromeImage": "./assets/images/emps-monochrome.png"
       },
       "predictiveBackGestureEnabled": true,
       "permissions": [

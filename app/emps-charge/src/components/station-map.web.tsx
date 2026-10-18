@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, Fonts, Radius } from '@/constants/theme';
 import type { Charger, Coordinate, Station } from '@/domain/models';
@@ -10,6 +10,9 @@ type StationMapProps = {
   chargers: Charger[];
   userCoordinate: Coordinate;
   selectedStationId?: string;
+  theme?: 'dark' | 'light';
+  showUserLocation?: boolean;
+  height?: number;
   onSelectStation: (stationId: string) => void;
 };
 
@@ -41,15 +44,20 @@ function buildMapHtml(
   chargers: Charger[],
   user: Coordinate,
   selectedStationId?: string,
+  theme: 'dark' | 'light' = 'dark',
+  showUserLocation = false,
 ) {
   const points = stations.map((station) => ({
     id: station.id,
     name: station.name,
     latitude: station.coordinates.latitude,
     longitude: station.coordinates.longitude,
-    available: chargers.filter(
-      (charger) => charger.stationId === station.id && charger.status === 'available',
-    ).length,
+    available:
+      station.availableNow === false
+        ? 0
+        : chargers.filter(
+            (charger) => charger.stationId === station.id && charger.status === 'available',
+          ).length,
     selected: station.id === selectedStationId,
   }));
 
@@ -94,7 +102,7 @@ function buildMapHtml(
     } else {
       const map = new maplibregl.Map({
         container: 'map',
-        style: 'https://tiles.openfreemap.org/styles/liberty',
+        style: 'https://tiles.openfreemap.org/styles/${theme === 'dark' ? 'dark' : 'liberty'}',
         center: [user.longitude, user.latitude],
         zoom: 11.8,
         attributionControl: false
@@ -115,13 +123,17 @@ function buildMapHtml(
         bounds.extend([point.longitude, point.latitude]);
       });
 
+      if (${showUserLocation}) {
       const userMarker = document.createElement('div');
       userMarker.className = 'user-marker';
       userMarker.title = 'Sua posição';
       new maplibregl.Marker({ element: userMarker }).setLngLat([user.longitude, user.latitude]).addTo(map);
       bounds.extend([user.longitude, user.latitude]);
+      }
 
+      const loadTimeout = setTimeout(() => sendToEmps('error'), 18000);
       map.on('load', () => {
+        clearTimeout(loadTimeout);
         if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 54, maxZoom: 13, duration: 0 });
         sendToEmps('ready');
       });
@@ -137,11 +149,15 @@ export function StationMap({
   userCoordinate,
   selectedStationId,
   onSelectStation,
+  theme = 'dark',
+  showUserLocation = false,
+  height = 310,
 }: StationMapProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const html = useMemo(
-    () => buildMapHtml(stations, chargers, userCoordinate, selectedStationId),
-    [chargers, selectedStationId, stations, userCoordinate],
+    () =>
+      buildMapHtml(stations, chargers, userCoordinate, selectedStationId, theme, showUserLocation),
+    [chargers, selectedStationId, stations, userCoordinate, theme, showUserLocation],
   );
   const [mapState, setMapState] = useState<MapState>(() => ({ html, status: 'loading' }));
   const status = mapState.html === html ? mapState.status : 'loading';
@@ -153,26 +169,45 @@ export function StationMap({
 
       if (event.data.type === 'ready') setMapState({ html, status: 'ready' });
       if (event.data.type === 'error') setMapState({ html, status: 'error' });
-      if (event.data.type === 'station' && event.data.stationId) {
+      if (
+        event.data.type === 'station' &&
+        event.data.stationId &&
+        stations.some((station) => station.id === event.data.stationId)
+      ) {
         onSelectStation(event.data.stationId);
       }
     }
 
     window.addEventListener('message', receiveMapMessage);
     return () => window.removeEventListener('message', receiveMapMessage);
-  }, [html, onSelectStation]);
+  }, [html, onSelectStation, stations]);
 
   if (status === 'error') {
     return (
       <View style={styles.fallback}>
         <Text style={styles.fallbackTitle}>Mapa temporariamente indisponível</Text>
-        <Text style={styles.fallbackCopy}>A lista de eletropostos continua disponível logo abaixo.</Text>
+        <Text style={styles.fallbackCopy}>
+          A lista de eletropostos continua disponível logo abaixo.
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            setMapState({ html, status: 'loading' });
+          }}
+          style={styles.retryButton}
+        >
+          <Text style={styles.retryText}>Recarregar mapa</Text>
+        </Pressable>
       </View>
     );
   }
 
   return (
-    <View accessibilityLabel="Mapa dos eletropostos" role="region" style={styles.container}>
+    <View
+      accessibilityLabel="Mapa dos eletropostos"
+      role="region"
+      style={[styles.container, { height }]}
+    >
       {status !== 'ready' ? (
         <View pointerEvents="none" style={styles.loading}>
           <ActivityIndicator color={Colors.coral} />
@@ -196,10 +231,12 @@ export function StationMap({
 }
 
 const styles = StyleSheet.create({
+  retryButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
+  retryText: { color: Colors.coralText, fontFamily: Fonts.semiBold, fontSize: 12 },
   container: {
     backgroundColor: Colors.surface,
     borderColor: Colors.border,
-    borderRadius: Radius.large,
+    borderRadius: 12,
     borderWidth: 1,
     height: 310,
     overflow: 'hidden',
@@ -222,7 +259,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#111318E8',
     borderRadius: Radius.pill,
-    bottom: 12,
+    top: 12,
     flexDirection: 'row',
     gap: 6,
     left: 12,
@@ -231,12 +268,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   legendDot: { backgroundColor: Colors.coral, borderRadius: 4, height: 7, width: 7 },
-  legendText: { color: Colors.textMuted, fontFamily: Fonts.medium, fontSize: 9 },
+  legendText: { color: Colors.textMuted, fontFamily: Fonts.medium, fontSize: 10 },
   fallback: {
     alignItems: 'center',
     backgroundColor: Colors.surface,
     borderColor: Colors.border,
-    borderRadius: Radius.large,
+    borderRadius: 12,
     borderWidth: 1,
     gap: 5,
     height: 230,

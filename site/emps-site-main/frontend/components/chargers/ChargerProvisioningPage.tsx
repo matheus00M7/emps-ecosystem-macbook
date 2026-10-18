@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { chargerQrUrl } from "@/domain/charger-qr";
 import { AppShell } from "@/components/shell/AppShell";
 import type {
   ChargerProvisioning,
@@ -414,7 +415,7 @@ export function ChargerProvisioningPage() {
           <div className="provisioning-card-grid">
             {items.map((item) => {
               const qr = item.charger?.qrBindings[0];
-              const chargeUrl=qr ? window.location.origin+"/charge/"+encodeURIComponent(qr.publicToken || qr.code) : "";
+              const chargeUrl=qr ? chargerQrUrl(qr.publicToken || qr.code) : "";
               const actionBusy = busy.endsWith(`:${item.id}`);
               return (
                 <article className="provisioning-card panel" key={item.id}>

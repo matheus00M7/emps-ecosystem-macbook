@@ -4,6 +4,7 @@ import { Info, QrCode, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavigationLink as Link } from '@/components/shell/NavigationLink';
 import { QRCodeSVG } from 'qrcode.react';
+import { chargerQrUrl } from '@/domain/charger-qr';
 import { api, isReadOnlyMode, isAccessDenied } from '@/services/emps-api';
 import { formatKw } from '@/utils/formatters';
 import { OperationsDialog, OperationsEmpty, OperationsHeader, OperationsPagination, OperationsSummary } from '@/components/operations/OperationsUI';
@@ -56,7 +57,7 @@ export function CanonicalChargers({ navigation }: { navigation?: ReactNode }) {
   const visible = useMemo(() => scoped.filter(charger => filter === 'all' || chargerState(charger, now).key === filter), [scoped, filter, now]);
   const pagination = pageSlice(visible, page);
   const hasFilters = Boolean(query || station || filter !== 'all');
-  const qrUrl = qrCharger?.qrBindings[0] && typeof window !== 'undefined' ? `${window.location.origin}/charge/${encodeURIComponent(qrCharger.qrBindings[0].publicToken)}` : '';
+  const qrUrl = qrCharger?.qrBindings[0] ? chargerQrUrl(qrCharger.qrBindings[0].publicToken) : '';
   function reset() { setStation(''); setQuery(''); setFilter('all'); setPage(1); }
   async function qr(charger: ListedCharger) {
     if (busy || charger.administrativeStatus === 'DISABLED') return;
@@ -111,7 +112,7 @@ export function CanonicalChargers({ navigation }: { navigation?: ReactNode }) {
       </dl>
     </OperationsDialog>}
     {qrCharger && <OperationsDialog title={`QR de recarga · ${qrCharger.name}`} onClose={() => setQrCharger(null)}>
-      <div className={styles.qr}><QRCodeSVG value={qrUrl} size={200} bgColor="#ffffff" fgColor="#000000" marginSize={4} /><Link href={`/charge/${encodeURIComponent(qrCharger.qrBindings[0].publicToken)}`} target="_blank" rel="noreferrer">Abrir recarga</Link></div>
+      <div className={styles.qr}><QRCodeSVG value={qrUrl} size={200} bgColor="#ffffff" fgColor="#000000" marginSize={4} /><Link href={qrUrl} target="_blank" rel="noreferrer">Abrir recarga</Link></div>
     </OperationsDialog>}
   </div>;
 }

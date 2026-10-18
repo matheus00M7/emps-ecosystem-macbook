@@ -23,7 +23,7 @@ export type ChargeLifecycle = {
 };
 export type Charger = {
   chargePolicyVersion?:'PREPAID_LIMIT_V2';
-  paymentOptions?:{paymentProvider:string;demoPayments:boolean};
+  paymentOptions?:{paymentProvider:string;demoPayments:boolean;stripePublishableKey?:string};
   tariff?:TariffDisclosure;
   id: string;
   publicCode: string;

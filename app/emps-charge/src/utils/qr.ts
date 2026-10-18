@@ -1,6 +1,12 @@
 import { chargers } from '@/data/mock-data';
 
-const ALLOWED_HOSTS = new Set(['app.emps.com.br', 'emps.com.br', 'www.emps.com.br']);
+const ALLOWED_HOSTS = new Set([
+  'emps-charge.tech',
+  'www.emps-charge.tech',
+  'app.emps.com.br',
+  'emps.com.br',
+  'www.emps.com.br',
+]);
 
 export type QrResolution =
   | { ok: true; chargerId: string }

@@ -5,13 +5,14 @@ import {
   Check,
   CircleStop,
   CloudOff,
+  Download,
   Gauge,
   LockKeyhole,
   Radio,
   Zap,
 } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -19,6 +20,9 @@ import { AppButton } from '@/components/ui/app-button';
 import { PageHeader } from '@/components/ui/page-header';
 import { Colors, Fonts, MaxContentWidth, Radius } from '@/constants/theme';
 import { getLiveSessionMetrics, useApp } from '@/context/app-context';
+import { usePreferences } from '@/context/preferences-context';
+import { demoPayment } from '@/domain/checkout';
+import { sharePaymentAuthorizationPdf } from '@/services/receipt-share';
 import { formatCurrency, formatEnergy, formatPower, formatTimer } from '@/utils/formatters';
 
 const RING_SIZE = 224;
@@ -28,6 +32,7 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 export default function ChargingScreen() {
   const router = useRouter();
+  const { preferences } = usePreferences();
   const {
     activeSession,
     finishSession,
@@ -41,6 +46,8 @@ export default function ChargingScreen() {
   const [stopping, setStopping] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [telemetryConnected, setTelemetryConnected] = useState(true);
+  const [sharingAuthorization, setSharingAuthorization] = useState(false);
+  const [authorizationError, setAuthorizationError] = useState('');
   const charger = activeSession ? getCharger(activeSession.chargerId) : undefined;
   const station = activeSession ? getStation(activeSession.stationId) : undefined;
 
@@ -82,6 +89,9 @@ export default function ChargingScreen() {
   if (!activeSession || !metrics) return <Redirect href="/" />;
 
   const sandbox = isDemoMode || activeSession.telemetrySource?.endsWith('_sandbox') === true;
+  const demoAuthorization = charger && station && activeSession.paymentMethod !== 'card' &&
+    demoPayment(charger.paymentOptions, activeSession.paymentMethod, isDemoMode) &&
+    ['starting', 'charging', 'stopping'].includes(activeSession.status);
   const limitProgress = activeSession.spendingLimit
     ? Math.min(metrics.totalCost / activeSession.spendingLimit, 1)
     : Math.min(metrics.energyKwh / 40, 0.92);
@@ -92,7 +102,9 @@ export default function ChargingScreen() {
     setStopping(true);
     try {
       const completed = await finishSession();
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (Platform.OS !== 'web' && preferences.vibration) {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
       router.replace(`/receipt?sessionId=${completed.id}`);
     } catch (error) {
       Alert.alert(
@@ -100,6 +112,19 @@ export default function ChargingScreen() {
         error instanceof Error ? error.message : 'Tente novamente em alguns instantes.',
       );
       setStopping(false);
+    }
+  }
+
+  async function shareAuthorization() {
+    if (!activeSession || !charger || !station || sharingAuthorization || !demoAuthorization) return;
+    setSharingAuthorization(true);
+    setAuthorizationError('');
+    try {
+      await sharePaymentAuthorizationPdf(activeSession, station.name, charger, isDemoMode);
+    } catch (cause) {
+      setAuthorizationError(cause instanceof Error ? cause.message : 'Não foi possível gerar o comprovante.');
+    } finally {
+      setSharingAuthorization(false);
     }
   }
 
@@ -208,6 +233,8 @@ export default function ChargingScreen() {
             </Text>
           </View>
 
+          {demoAuthorization && <AppButton title={sharingAuthorization ? 'Preparando PDF…' : 'Comprovante de teste em PDF'} icon={<Download size={18} color={Colors.text} />} variant="secondary" loading={sharingAuthorization} onPress={() => void shareAuthorization()} />}
+          {authorizationError ? <Text accessibilityRole="alert" style={{ color: Colors.danger, fontFamily: Fonts.regular, fontSize: 12 }}>{authorizationError}</Text> : null}
           <AppButton
             icon={!stopping ? <CircleStop color={Colors.white} size={19} /> : undefined}
             loading={stopping}

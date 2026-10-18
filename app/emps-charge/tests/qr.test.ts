@@ -1,7 +1,37 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { resolveEmpsQr } from '../src/utils/qr';
+import { parseEmpsQrPublicToken, resolveEmpsQr } from '../src/utils/qr';
+import { chargerQrUrl } from '../../../site/emps-site-main/frontend/domain/charger-qr';
+
+test('QR gerado pelo painel local usa endereco publico aceito pelo app', () => {
+  const token = 'test-public-token_123-ABC';
+  const link = chargerQrUrl(token);
+  assert.equal(link, `https://emps-charge.tech/charge/${token}`);
+  assert.deepEqual(parseEmpsQrPublicToken(link), { ok: true, publicToken: token });
+});
+
+test('link publico preserva o token codificado e aceita www', () => {
+  const token = 'test-token:123/ABC+value=';
+  const link = chargerQrUrl(token);
+  assert.equal(new URL(link).pathname, `/charge/${encodeURIComponent(token)}`);
+  assert.deepEqual(parseEmpsQrPublicToken(link), { ok: true, publicToken: token });
+  assert.deepEqual(parseEmpsQrPublicToken(link.replace('https://', 'https://www.')), {
+    ok: true,
+    publicToken: token,
+  });
+});
+
+test('endereco local e variantes falsas do dominio atual nao sao links oficiais', () => {
+  for (const link of [
+    'http://localhost:3010/charge/test-token',
+    'http://emps-charge.tech/charge/test-token',
+    'https://emps-charge.tech.golpe.example/charge/test-token',
+    'https://emps-charge.tech@untrusted.example/charge/test-token',
+  ]) {
+    assert.equal(parseEmpsQrPublicToken(link).ok, false, link);
+  }
+});
 
 test('resolve um código curto de vaga', () => {
   assert.deepEqual(resolveEmpsQr('EMPS-PAULISTA-A01'), { ok: true, chargerId: 'chg_001' });

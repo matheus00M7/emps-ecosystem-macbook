@@ -52,6 +52,7 @@ export default function ReceiptScreen() {
   const billing=(!session?.billingFrozen&&session?.status!=='completed'&&quote?.id===session?.id?quote?.customer:undefined)??session?.billing,total=billing?Number(billing.total_amount):session?.totalCost??0;
   const charger = session ? getCharger(session.chargerId) : undefined;
   const station = session ? getStation(session.stationId) : undefined;
+  const demoReceipt = isDemoMode || session?.receipt?.sandbox === true || session?.receipt?.provider === 'sandbox';
   const [loadingEntities, setLoadingEntities] = useState(Boolean(session && (!charger || !station)));
 
   useEffect(() => {
@@ -152,8 +153,8 @@ export default function ReceiptScreen() {
           <View style={styles.demoNote}>
             <Download color={Colors.yellow} size={16} />
             <Text style={styles.demoNoteText}>
-              {isDemoMode
-                ? 'Recibo demonstrativo. Nenhum documento fiscal real foi emitido.'
+              {demoReceipt
+                ? 'Comprovante de demonstração. Nenhum dinheiro foi transferido e nenhum documento fiscal foi emitido.'
                 : 'Recibo sincronizado com a sessão e o pagamento registrados pela EMPS.'}
             </Text>
           </View>

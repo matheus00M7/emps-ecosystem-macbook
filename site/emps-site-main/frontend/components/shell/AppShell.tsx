@@ -93,7 +93,7 @@ export function AppShell({
                   className="topbar-emps-brand__image"
                   height={428}
                   priority
-                  src="/emps-logo-red.png"
+                  src="/emps-logo.svg"
                   width={1261}
                 />
               </span>

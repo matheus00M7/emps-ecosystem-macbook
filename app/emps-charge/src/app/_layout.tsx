@@ -17,6 +17,7 @@ import { LogoMark } from '@/components/brand';
 import { PaymentProvider } from '@/components/payment-provider';
 import { Colors } from '@/constants/theme';
 import { AppProvider, useApp } from '@/context/app-context';
+import { PreferencesProvider } from '@/context/preferences-context';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -57,7 +58,8 @@ function Navigation() {
           animation: 'slide_from_right',
           contentStyle: { backgroundColor: Colors.background },
           headerShown: false,
-        }}>
+        }}
+      >
         <Stack.Protected guard={!user}>
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
@@ -84,7 +86,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.root}>
       <PaymentProvider>
         <AppProvider>
-          <Navigation />
+          <PreferencesProvider>
+            <Navigation />
+          </PreferencesProvider>
         </AppProvider>
       </PaymentProvider>
     </GestureHandlerRootView>

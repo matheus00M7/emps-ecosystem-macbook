@@ -6,8 +6,30 @@ import { receiptRows, currency } from './receipt-html';
 export async function receiptPdf(session: ChargingSession, station: string, charger: string, logo: Uint8Array) {
   const rows = receiptRows(session, station, charger);
   const paid = session.receipt!;
+  return receiptDocumentPdf(rows, logo, {
+    title: 'Comprovante de pagamento',
+    metadataTitle: 'Comprovante EMPS - ' + paid.transactionId,
+    subtitle: 'EMPS Charge | ' + (paid.sandbox ?? ['stripe','sandbox','zero_amount'].includes(paid.provider) ? 'Sandbox / demonstracao' : 'Pagamento registrado'),
+    totalLabel: 'Total pago',
+    total: currency(paid.amountPaid),
+    notes: ['Valores oficiais do pagamento. Horários de Brasília.', 'Este comprovante não substitui documento fiscal.'],
+  });
+}
+
+type DocumentOptions = {
+  title: string;
+  metadataTitle: string;
+  subtitle: string;
+  totalLabel: string;
+  total: string;
+  notes: string[];
+};
+
+export async function receiptDocumentPdf(
+  rows: (string | null | undefined)[][], logo: Uint8Array, options: DocumentOptions,
+) {
   const doc = await PDFDocument.create();
-  doc.setTitle('Comprovante EMPS - ' + paid.transactionId);
+  doc.setTitle(options.metadataTitle);
   doc.setAuthor('EMPS');
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -22,9 +44,9 @@ export async function receiptPdf(session: ChargingSession, station: string, char
   const dimensions = image.scale(Math.min(135/image.width, 48/image.height));
   page.drawImage(image,{x:40,y:y-dimensions.height,...dimensions});
   y -= 78;
-  text('Comprovante de pagamento',40,y,23,true);
+  text(options.title,40,y,23,true);
   y -= 23;
-  text('EMPS Charge | ' + (paid.sandbox ?? ['stripe','sandbox','zero_amount'].includes(paid.provider) ? 'Sandbox / demonstracao' : 'Pagamento registrado'),40,y);
+  text(options.subtitle,40,y);
   y -= 18;
   page.drawLine({start:{x:40,y},end:{x:555,y},thickness:2,color:red});
   y -= 27;
@@ -46,9 +68,8 @@ export async function receiptPdf(session: ChargingSession, station: string, char
   }
   if (y<135) {page=doc.addPage([595.28,841.89]);y=790;}
   page.drawRectangle({x:40,y:y-45,width:515,height:55,color:rgb(.95,.96,.97)});
-  text('Total pago',54,y-23,18,true);
-  text(currency(paid.amountPaid),350,y-23,20,true);
-  text('Valores oficiais do pagamento. Horários de Brasília.',40,y-70,9);
-  text('Este comprovante não substitui documento fiscal.',40,y-85,9);
+  text(options.totalLabel,54,y-23,16,true);
+  text(options.total,350,y-23,20,true);
+  options.notes.forEach((note, index) => text(note,40,y-70-index*15,9));
   return doc.save();
 }

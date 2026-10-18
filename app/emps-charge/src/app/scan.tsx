@@ -1,12 +1,23 @@
 import { CameraView, type BarcodeScanningResult, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import { Flashlight, Keyboard, ScanLine, ShieldCheck, X } from 'lucide-react-native';
+import {
+  ArrowRight,
+  Camera,
+  Flashlight,
+  Keyboard,
+  RotateCcw,
+  ScanLine,
+  ShieldCheck,
+  X,
+} from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  KeyboardAvoidingView,
   Linking,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -15,453 +26,463 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/ui/app-button';
-import { Colors, Fonts, MaxContentWidth, Radius } from '@/constants/theme';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { Colors, Fonts } from '@/constants/theme';
 import { useApp } from '@/context/app-context';
+import { usePreferences } from '@/context/preferences-context';
 
 export default function ScanScreen() {
   const router = useRouter();
   const { activeSession, resolveQrCode } = useApp();
+  const { preferences } = usePreferences();
   const [permission, requestPermission] = useCameraPermissions();
+  const [mode, setMode] = useState<'camera' | 'manual'>('camera');
   const [torch, setTorch] = useState(false);
-  const [scanned, setScanned] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [isFocused, setIsFocused] = useState(true);
   const [cameraReady, setCameraReady] = useState(false);
-  const [nativeScannerOpening, setNativeScannerOpening] = useState(false);
-  const [manualCode, setManualCode] = useState('EMPS-PAULISTA-A01');
+  const [nativeOpening, setNativeOpening] = useState(false);
+  const [manualCode, setManualCode] = useState('');
   const [error, setError] = useState('');
   const scanLock = useRef(false);
-
-  const processCode = useCallback(
-    async (value: string, source: 'camera' | 'android-native' | 'manual') => {
-      if (scanLock.current) return;
-      scanLock.current = true;
-      setScanned(true);
-      setError('');
-      console.info('[qr-scanner] código detectado', {
-        source,
-        preview: value.slice(0, 80),
-      });
-      try {
-        const resolution = await resolveQrCode(value);
-        console.info('[qr-scanner] carregador resolvido', {
-          source,
-          chargerId: resolution.charger.id,
-        });
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.replace(`/charger/${resolution.charger.id}`);
-        return;
-      } catch (resolutionError) {
-        const message =
-          resolutionError instanceof Error
-            ? resolutionError.message
-            : 'Não foi possível confirmar este QR.';
-        console.warn('[qr-scanner] código rejeitado', { source, reason: message });
-        setError(message);
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setTimeout(() => {
-          scanLock.current = false;
-          setScanned(false);
-        }, 1800);
-      }
-    },
-    [resolveQrCode, router],
-  );
-
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
-
-    const subscription = CameraView.onModernBarcodeScanned((result) => {
-      void processCode(result.data, 'android-native');
-    });
-    return () => subscription.remove();
-  }, [processCode]);
+  const focused = useRef(true);
+  const generation = useRef(0);
 
   useFocusEffect(
     useCallback(() => {
+      focused.current = true;
       scanLock.current = false;
-      setScanned(false);
-      setCameraReady(false);
+      setBusy(false);
+      setError('');
       setIsFocused(true);
-
       return () => {
+        focused.current = false;
+        generation.current += 1;
         setIsFocused(false);
-        setCameraReady(false);
         setTorch(false);
+        setCameraReady(false);
       };
     }, []),
   );
 
-  async function openNativeScanner() {
-    if (!CameraView.isModernBarcodeScannerAvailable) {
-      setError(
-        'O leitor nativo não está disponível neste aparelho. Atualize o Google Play Services e use a câmera acima ou o código da vaga.',
-      );
-      console.warn('[qr-scanner] leitor nativo indisponível');
-      return;
-    }
-
-    setError('');
-    setNativeScannerOpening(true);
-    console.info('[qr-scanner] abrindo leitor nativo');
-    try {
-      await CameraView.launchScanner({ barcodeTypes: ['qr'] });
-    } catch (scannerError) {
-      const message = scannerError instanceof Error ? scannerError.message : String(scannerError);
-      if (!message.toLowerCase().includes('cancel')) {
-        console.error('[qr-scanner] falha no leitor nativo', { message });
-        setError(`Não foi possível abrir o leitor do Android: ${message}`);
+  const processCode = useCallback(
+    async (value: string) => {
+      if (!focused.current || scanLock.current || !value.trim()) return;
+      const current = ++generation.current;
+      scanLock.current = true;
+      setBusy(true);
+      setError('');
+      try {
+        const resolution = await resolveQrCode(value.trim());
+        if (!focused.current || current !== generation.current) return;
+        if (preferences.vibration && Platform.OS !== 'web')
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        router.replace({ pathname: '/charger/[id]', params: { id: resolution.charger.id } });
+      } catch (failure) {
+        if (!focused.current || current !== generation.current) return;
+        setError(
+          failure instanceof Error
+            ? failure.message
+            : 'Não foi possível confirmar este código. Tente novamente.',
+        );
+        if (preferences.vibration && Platform.OS !== 'web')
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      } finally {
+        if (focused.current && current === generation.current) setBusy(false);
       }
+    },
+    [preferences.vibration, resolveQrCode, router],
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || mode !== 'camera' || !isFocused) return;
+    const subscription = CameraView.onModernBarcodeScanned((result) => {
+      void processCode(result.data);
+    });
+    return () => subscription.remove();
+  }, [isFocused, mode, processCode]);
+
+  function resetReader() {
+    generation.current += 1;
+    scanLock.current = false;
+    setBusy(false);
+    setError('');
+  }
+  function switchMode(next: 'camera' | 'manual') {
+    resetReader();
+    setTorch(false);
+    setCameraReady(false);
+    setMode(next);
+  }
+  async function allowCamera() {
+    setError('');
+    try {
+      if (permission && !permission.granted && !permission.canAskAgain) {
+        if (Platform.OS === 'web') {
+          setError(
+            'Permita a câmera nas configurações deste site no navegador e abra o leitor novamente.',
+          );
+          return;
+        }
+        await Linking.openSettings();
+      } else {
+        const result = await requestPermission();
+        if (!result.granted)
+          setError('Câmera não autorizada. Você pode continuar pela opção Código.');
+      }
+    } catch {
+      setError('Não conseguimos acessar a câmera. Use a opção Código para continuar.');
+    }
+  }
+  async function openNativeScanner() {
+    resetReader();
+    setNativeOpening(true);
+    try {
+      if (!CameraView.isModernBarcodeScannerAvailable) {
+        setError('O leitor do Android não está disponível. Use a câmera ou a opção Código.');
+        return;
+      }
+      await CameraView.launchScanner({ barcodeTypes: ['qr'] });
+    } catch (failure) {
+      if (focused.current && !(failure instanceof Error && /cancel/i.test(failure.message)))
+        setError('Não foi possível abrir o leitor do Android.');
     } finally {
-      setNativeScannerOpening(false);
+      if (focused.current) setNativeOpening(false);
     }
   }
 
   if (activeSession) return <Redirect href="/charging" />;
-
-  const cameraGranted = Boolean(permission?.granted);
-  const cannotAskAgain = permission && !permission.granted && !permission.canAskAgain;
-
+  const granted = Boolean(permission?.granted);
   return (
-    <View style={styles.screen}>
-      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-        <View role="main" style={styles.content}>
-          <View style={styles.header}>
-            <Pressable
-              accessibilityLabel="Fechar leitor"
-              accessibilityRole="button"
-              onPress={() => router.back()}
-              style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
-              <X color={Colors.text} size={22} />
-            </Pressable>
-            <View style={styles.headerCopy}>
-              <Text accessibilityRole="header" style={styles.title}>Escanear QR</Text>
-              <Text style={styles.subtitle}>Aponte para o adesivo da vaga</Text>
-            </View>
-            <Pressable
-              accessibilityLabel={torch ? 'Desligar lanterna' : 'Ligar lanterna'}
-              accessibilityRole="button"
-              disabled={!cameraGranted}
-              onPress={() => setTorch((current) => !current)}
-              style={({ pressed }) => [
-                styles.closeButton,
-                torch && styles.torchActive,
-                pressed && styles.pressed,
-              ]}>
-              <Flashlight color={torch ? Colors.coral : Colors.text} size={20} />
-            </Pressable>
-          </View>
-
-          <View style={styles.cameraShell}>
-            {cameraGranted && isFocused ? (
-              <CameraView
-                barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-                enableTorch={torch}
-                facing="back"
-                onBarcodeScanned={
-                  scanned
-                    ? undefined
-                    : (result: BarcodeScanningResult) => processCode(result.data, 'camera')
-                }
-                onCameraReady={() => {
-                  setCameraReady(true);
-                  console.info('[qr-scanner] câmera pronta');
-                }}
-                onMountError={(event) => {
-                  setCameraReady(false);
-                  setError(`Não foi possível iniciar a câmera: ${event.message}`);
-                  console.error('[qr-scanner] falha ao iniciar câmera', {
-                    message: event.message,
-                  });
-                }}
-                style={StyleSheet.absoluteFill}
-              />
-            ) : !cameraGranted ? (
-              <View style={styles.permissionState}>
-                <View style={styles.permissionIcon}>
-                  <ScanLine color={Colors.coral} size={38} />
-                </View>
-                <Text style={styles.permissionTitle}>Permita o acesso à câmera</Text>
-                <Text style={styles.permissionText}>
-                  A câmera só é usada enquanto esta tela estiver aberta para ler o QR do carregador.
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safe}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          role="main"
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scroll}
+        >
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <View style={styles.flex}>
+                <Text style={styles.eyebrow}>NOVA RECARGA</Text>
+                <Text accessibilityRole="header" style={styles.title}>
+                  Conectar ao carregador
                 </Text>
-                <AppButton
-                  onPress={cannotAskAgain ? Linking.openSettings : requestPermission}
-                  style={styles.permissionButton}
-                  title={cannotAskAgain ? 'Abrir ajustes' : 'Permitir câmera'}
-                />
               </View>
-            ) : null}
-
-            {cameraGranted && isFocused ? (
-              <>
-                <View pointerEvents="none" style={styles.cameraShade} />
-                <View pointerEvents="none" style={styles.frame}>
-                  <View style={[styles.corner, styles.topLeft]} />
-                  <View style={[styles.corner, styles.topRight]} />
-                  <View style={[styles.corner, styles.bottomLeft]} />
-                  <View style={[styles.corner, styles.bottomRight]} />
-                  <View style={styles.scanLine} />
-                </View>
-                <View pointerEvents="none" style={styles.cameraHint}>
-                  <Text style={styles.cameraHintText}>
-                    {scanned
-                      ? 'QR detectado · verificando código…'
-                      : cameraReady
-                        ? 'Câmera pronta · centralize o QR'
-                        : 'Iniciando câmera…'}
-                  </Text>
-                </View>
-              </>
-            ) : null}
-          </View>
-
-          {Platform.OS === 'android' ? (
-            <AppButton
-              icon={!nativeScannerOpening ? <ScanLine color={Colors.white} size={18} /> : undefined}
-              loading={nativeScannerOpening}
-              onPress={openNativeScanner}
-              style={styles.nativeScannerButton}
-              title="Usar leitor nativo do Android"
-              variant="secondary"
-            />
-          ) : null}
-
-          {error ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
-
-          <View style={styles.manualCard}>
-            <View style={styles.manualHeader}>
-              <View style={styles.manualIcon}>
-                <Keyboard color={Colors.cyan} size={18} />
-              </View>
-              <View style={styles.manualCopy}>
-                <Text style={styles.manualTitle}>Código da vaga</Text>
-                <Text style={styles.manualSubtitle}>Use se a câmera não conseguir ler o QR</Text>
-              </View>
-            </View>
-            <View style={styles.manualRow}>
-              <TextInput
-                autoCapitalize="characters"
-                onChangeText={setManualCode}
-                onSubmitEditing={() => processCode(manualCode, 'manual')}
-                placeholder="Ex.: EMPS-PAULISTA-A01"
-                placeholderTextColor={Colors.textFaint}
-                selectionColor={Colors.coral}
-                style={styles.manualInput}
-                value={manualCode}
-              />
               <Pressable
-                accessibilityLabel="Confirmar código da vaga"
                 accessibilityRole="button"
-                onPress={() => processCode(manualCode, 'manual')}
-                style={({ pressed }) => [styles.manualSubmit, pressed && styles.pressed]}>
-                <Text style={styles.manualSubmitText}>OK</Text>
+                accessibilityLabel="Fechar leitor"
+                onPress={() => router.replace('/')}
+                style={styles.iconButton}
+              >
+                <X size={22} color={Colors.textMuted} />
               </Pressable>
             </View>
+            <SegmentedControl
+              label="Método de leitura"
+              value={mode}
+              onChange={switchMode}
+              options={[
+                {
+                  value: 'camera',
+                  label: 'Câmera',
+                  icon: <Camera size={18} color={Colors.textMuted} />,
+                },
+                {
+                  value: 'manual',
+                  label: 'Código',
+                  icon: <Keyboard size={18} color={Colors.textMuted} />,
+                },
+              ]}
+            />
+            {mode === 'camera' ? (
+              <>
+                <View style={styles.cameraShell}>
+                  {granted && isFocused && !nativeOpening ? (
+                    <CameraView
+                      facing="back"
+                      enableTorch={torch}
+                      style={StyleSheet.absoluteFill}
+                      barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                      onBarcodeScanned={
+                        busy || !!error
+                          ? undefined
+                          : (result: BarcodeScanningResult) => {
+                              void processCode(result.data);
+                            }
+                      }
+                      onCameraReady={() => setCameraReady(true)}
+                      onMountError={() => {
+                        setCameraReady(false);
+                        setError(
+                          'A câmera não iniciou. Verifique as permissões ou use a opção Código.',
+                        );
+                      }}
+                    />
+                  ) : (
+                    <View style={styles.permission}>
+                      <View style={styles.cameraIcon}>
+                        <ScanLine size={42} color={Colors.coral} />
+                      </View>
+                      <Text style={styles.permissionTitle}>Leia o QR da vaga</Text>
+                      <Text style={styles.copy}>
+                        A câmera identifica o carregador. Você confere a tarifa antes de iniciar.
+                      </Text>
+                      <AppButton
+                        title="Ativar câmera"
+                        icon={<Camera size={18} color={Colors.white} />}
+                        onPress={allowCamera}
+                        style={styles.cameraButton}
+                      />
+                    </View>
+                  )}
+                  {granted && isFocused && !nativeOpening && (
+                    <>
+                      <View pointerEvents="none" style={styles.frame}>
+                        <View style={[styles.corner, styles.topLeft]} />
+                        <View style={[styles.corner, styles.topRight]} />
+                        <View style={[styles.corner, styles.bottomLeft]} />
+                        <View style={[styles.corner, styles.bottomRight]} />
+                      </View>
+                      <View pointerEvents="none" style={styles.cameraHint}>
+                        <Text style={styles.hint}>
+                          {busy
+                            ? 'Verificando carregador...'
+                            : error
+                              ? 'Leitura pausada'
+                              : cameraReady
+                                ? 'Centralize o QR da vaga'
+                                : 'Iniciando câmera...'}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                </View>
+                {Platform.OS !== 'web' && (
+                  <View style={styles.cameraTools}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={torch ? 'Desligar lanterna' : 'Ligar lanterna'}
+                      accessibilityState={{ selected: torch }}
+                      disabled={!granted || !cameraReady}
+                      onPress={() => setTorch((value) => !value)}
+                      style={[styles.iconButton, torch && styles.selected]}
+                    >
+                      <Flashlight size={20} color={torch ? Colors.coral : Colors.textMuted} />
+                    </Pressable>
+                    {Platform.OS === 'android' && (
+                      <AppButton
+                        title="Leitor do Android"
+                        variant="secondary"
+                        onPress={openNativeScanner}
+                        loading={nativeOpening}
+                      />
+                    )}
+                  </View>
+                )}
+              </>
+            ) : (
+              <View style={styles.manual}>
+                <View style={styles.manualIcon}>
+                  <Keyboard size={28} color={Colors.cyan} />
+                </View>
+                <Text style={styles.manualTitle}>Código do carregador</Text>
+                <Text style={styles.copy}>Digite o código da vaga ou cole o link do QR.</Text>
+                <TextInput
+                  accessibilityLabel="Código ou link do carregador"
+                  value={manualCode}
+                  onChangeText={(value) => {
+                    setManualCode(value);
+                    if (!busy) resetReader();
+                  }}
+                  editable={!busy}
+                  placeholder="Código ou link do QR"
+                  placeholderTextColor={Colors.textFaint}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="go"
+                  maxLength={2048}
+                  onSubmitEditing={() => {
+                    if (!busy) {
+                      scanLock.current = false;
+                      void processCode(manualCode);
+                    }
+                  }}
+                  style={styles.input}
+                />
+                <AppButton
+                  title="Verificar carregador"
+                  disabled={!manualCode.trim()}
+                  loading={busy}
+                  icon={<ArrowRight size={19} color={Colors.white} />}
+                  onPress={() => {
+                    scanLock.current = false;
+                    void processCode(manualCode);
+                  }}
+                />
+              </View>
+            )}
+            {!!error && (
+              <View accessibilityRole="alert" style={styles.errorBox}>
+                <Text style={styles.errorText}>{error}</Text>
+                {mode === 'camera' && (
+                  <AppButton
+                    title="Tentar novamente"
+                    variant="secondary"
+                    icon={<RotateCcw size={16} color={Colors.text} />}
+                    onPress={resetReader}
+                  />
+                )}
+              </View>
+            )}
+            <View style={styles.security}>
+              <ShieldCheck size={20} color={Colors.green} />
+              <Text style={styles.securityText}>Nenhuma cobrança é feita ao ler o código.</Text>
+            </View>
           </View>
-
-          <View style={styles.securityNote}>
-            <ShieldCheck color={Colors.green} size={16} />
-            <Text style={styles.securityText}>
-              O QR identifica a vaga. Disponibilidade, tarifa e segurança são confirmadas novamente antes da recarga.
-            </Text>
-          </View>
-        </View>
-      </SafeAreaView>
-    </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { backgroundColor: Colors.black, flex: 1 },
-  safeArea: { flex: 1 },
-  content: {
-    alignSelf: 'center',
-    flex: 1,
-    maxWidth: MaxContentWidth,
-    paddingHorizontal: 18,
-    width: '100%',
-  },
-  header: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 12,
-    minHeight: 66,
-  },
-  closeButton: {
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderColor: Colors.border,
-    borderRadius: 22,
-    borderWidth: 1,
-    height: 44,
-    justifyContent: 'center',
+  safe: { flex: 1, backgroundColor: Colors.background },
+  flex: { flex: 1 },
+  scroll: { flexGrow: 1, paddingBottom: 28 },
+  content: { width: '100%', maxWidth: 600, alignSelf: 'center', paddingHorizontal: 20 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 24 },
+  eyebrow: { color: Colors.coralText, fontFamily: Fonts.semiBold, fontSize: 10, marginBottom: 5 },
+  title: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 22 },
+  iconButton: {
     width: 44,
-  },
-  torchActive: { backgroundColor: Colors.coralSoft, borderColor: `${Colors.coral}60` },
-  pressed: { opacity: 0.72, transform: [{ scale: 0.97 }] },
-  headerCopy: { flex: 1 },
-  title: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 17, textAlign: 'center' },
-  subtitle: {
-    color: Colors.textMuted,
-    fontFamily: Fonts.regular,
-    fontSize: 9,
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  cameraShell: {
-    backgroundColor: Colors.backgroundElevated,
-    borderColor: Colors.border,
-    borderRadius: Radius.large,
-    borderWidth: 1,
-    height: 360,
-    marginTop: 10,
-    overflow: 'hidden',
-  },
-  cameraShade: {
-    backgroundColor: '#00000020',
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
-  frame: {
-    height: 218,
-    left: '50%',
-    marginLeft: -109,
-    marginTop: -109,
-    position: 'absolute',
-    top: '48%',
-    width: 218,
-  },
-  corner: { borderColor: Colors.coral, height: 42, position: 'absolute', width: 42 },
-  topLeft: { borderLeftWidth: 4, borderTopLeftRadius: 16, borderTopWidth: 4, left: 0, top: 0 },
-  topRight: { borderRightWidth: 4, borderTopRightRadius: 16, borderTopWidth: 4, right: 0, top: 0 },
-  bottomLeft: { borderBottomLeftRadius: 16, borderBottomWidth: 4, borderLeftWidth: 4, bottom: 0, left: 0 },
-  bottomRight: { borderBottomRightRadius: 16, borderBottomWidth: 4, borderRightWidth: 4, bottom: 0, right: 0 },
-  scanLine: {
-    backgroundColor: Colors.coralAction,
-    boxShadow: `0 0 12px ${Colors.coral}`,
-    height: 2,
-    left: 18,
-    position: 'absolute',
-    right: 18,
-    top: '50%',
-  },
-  cameraHint: {
+    height: 44,
     alignItems: 'center',
-    bottom: 18,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-  },
-  cameraHintText: {
-    backgroundColor: '#000000B8',
-    borderRadius: Radius.pill,
-    color: Colors.white,
-    fontFamily: Fonts.medium,
-    fontSize: 9,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  permissionState: {
-    alignItems: 'center',
-    flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: 28,
-  },
-  permissionIcon: {
-    alignItems: 'center',
-    backgroundColor: Colors.coralSoft,
-    borderRadius: 28,
-    height: 64,
-    justifyContent: 'center',
-    width: 64,
-  },
-  permissionTitle: {
-    color: Colors.text,
-    fontFamily: Fonts.semiBold,
-    fontSize: 15,
-    marginTop: 16,
-  },
-  permissionText: {
-    color: Colors.textMuted,
-    fontFamily: Fonts.regular,
-    fontSize: 10,
-    lineHeight: 16,
-    marginTop: 7,
-    textAlign: 'center',
-  },
-  permissionButton: { marginTop: 16, minHeight: 46, width: '82%' },
-  errorBox: {
-    backgroundColor: '#FF4D5718',
-    borderColor: '#FF4D5750',
-    borderRadius: Radius.medium,
-    borderWidth: 1,
-    marginTop: 10,
-    padding: 11,
-  },
-  errorText: { color: Colors.danger, fontFamily: Fonts.medium, fontSize: 10, textAlign: 'center' },
-  nativeScannerButton: { marginTop: 10, minHeight: 48 },
-  manualCard: {
+    borderRadius: 10,
     backgroundColor: Colors.surface,
-    borderColor: Colors.borderSoft,
-    borderRadius: Radius.large,
+  },
+  selected: { backgroundColor: Colors.coralSoft },
+  cameraShell: {
+    marginTop: 18,
+    width: '100%',
+    aspectRatio: 1.1,
+    maxHeight: 400,
+    minHeight: 280,
     borderWidth: 1,
-    gap: 12,
-    marginTop: 14,
-    padding: 14,
-  },
-  manualHeader: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  manualIcon: {
-    alignItems: 'center',
-    backgroundColor: '#36C9DC18',
-    borderRadius: 12,
-    height: 38,
-    justifyContent: 'center',
-    width: 38,
-  },
-  manualCopy: { flex: 1 },
-  manualTitle: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 12 },
-  manualSubtitle: { color: Colors.textFaint, fontFamily: Fonts.regular, fontSize: 8, marginTop: 2 },
-  manualRow: { flexDirection: 'row', gap: 8 },
-  manualInput: {
-    backgroundColor: Colors.backgroundElevated,
     borderColor: Colors.border,
-    borderRadius: Radius.medium,
-    borderWidth: 1,
-    color: Colors.text,
-    flex: 1,
-    fontFamily: Fonts.mono,
-    fontSize: 10,
-    height: 46,
-    paddingHorizontal: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: Colors.surface,
   },
-  manualSubmit: {
+  permission: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 22, gap: 12 },
+  cameraIcon: {
+    width: 70,
+    height: 70,
+    borderRadius: 18,
+    backgroundColor: Colors.coralSoft,
     alignItems: 'center',
-    backgroundColor: Colors.coralAction,
-    borderRadius: Radius.medium,
-    height: 46,
     justifyContent: 'center',
-    width: 52,
   },
-  manualSubmitText: { color: Colors.white, fontFamily: Fonts.bold, fontSize: 12 },
-  securityNote: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 14,
-    paddingHorizontal: 5,
-  },
-  securityText: {
-    color: Colors.textFaint,
-    flex: 1,
+  permissionTitle: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 18 },
+  copy: {
+    color: Colors.textMuted,
     fontFamily: Fonts.regular,
-    fontSize: 8,
-    lineHeight: 13,
+    fontSize: 13,
+    lineHeight: 22,
+    textAlign: 'center',
   },
+  cameraButton: { minWidth: 200, marginTop: 4 },
+  frame: {
+    width: 210,
+    height: 210,
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginTop: -115,
+    marginLeft: -105,
+  },
+  corner: { position: 'absolute', borderColor: Colors.coral, width: 32, height: 32 },
+  topLeft: { left: 0, top: 0, borderLeftWidth: 3, borderTopWidth: 3, borderTopLeftRadius: 12 },
+  topRight: { right: 0, top: 0, borderRightWidth: 3, borderTopWidth: 3, borderTopRightRadius: 12 },
+  bottomLeft: {
+    left: 0,
+    bottom: 0,
+    borderLeftWidth: 3,
+    borderBottomWidth: 3,
+    borderBottomLeftRadius: 12,
+  },
+  bottomRight: {
+    right: 0,
+    bottom: 0,
+    borderRightWidth: 3,
+    borderBottomWidth: 3,
+    borderBottomRightRadius: 12,
+  },
+  cameraHint: { position: 'absolute', bottom: 16, left: 12, right: 12, alignItems: 'center' },
+  hint: {
+    backgroundColor: '#000000CC',
+    color: Colors.white,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 8,
+    fontFamily: Fonts.medium,
+    fontSize: 12,
+  },
+  cameraTools: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 14,
+  },
+  manual: { paddingVertical: 32, gap: 18 },
+  manualIcon: {
+    width: 60,
+    height: 60,
+    alignSelf: 'center',
+    backgroundColor: '#36C9DC18',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  manualTitle: {
+    color: Colors.text,
+    fontSize: 20,
+    fontFamily: Fonts.semiBold,
+    textAlign: 'center',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    borderRadius: 10,
+    minHeight: 56,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    fontFamily: Fonts.regular,
+    color: Colors.text,
+  },
+  errorBox: {
+    backgroundColor: Colors.coralSoft,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FF323A55',
+    padding: 16,
+    marginTop: 16,
+    gap: 12,
+  },
+  errorText: { fontFamily: Fonts.medium, color: Colors.coralText, fontSize: 13, lineHeight: 20 },
+  security: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 24,
+  },
+  securityText: { color: Colors.textMuted, fontFamily: Fonts.regular, fontSize: 12, flexShrink: 1 },
 });

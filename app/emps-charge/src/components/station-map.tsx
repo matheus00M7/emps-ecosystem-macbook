@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 import { Colors, Fonts, Radius } from '@/constants/theme';
@@ -10,6 +10,9 @@ type StationMapProps = {
   chargers: Charger[];
   userCoordinate: Coordinate;
   selectedStationId?: string;
+  theme?: 'dark' | 'light';
+  showUserLocation?: boolean;
+  height?: number;
   onSelectStation: (stationId: string) => void;
 };
 
@@ -18,15 +21,20 @@ function buildMapHtml(
   chargers: Charger[],
   user: Coordinate,
   selectedStationId?: string,
+  theme: 'dark' | 'light' = 'dark',
+  showUserLocation = false,
 ) {
   const points = stations.map((station) => ({
     id: station.id,
     name: station.name,
     latitude: station.coordinates.latitude,
     longitude: station.coordinates.longitude,
-    available: chargers.filter(
-      (charger) => charger.stationId === station.id && charger.status === 'available',
-    ).length,
+    available:
+      station.availableNow === false
+        ? 0
+        : chargers.filter(
+            (charger) => charger.stationId === station.id && charger.status === 'available',
+          ).length,
     selected: station.id === selectedStationId,
   }));
 
@@ -51,11 +59,11 @@ function buildMapHtml(
   <div class="osm-attribution"><a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a></div>
   <script src="https://unpkg.com/maplibre-gl@5.19.0/dist/maplibre-gl.js" onerror="window.ReactNativeWebView.postMessage('map-error')"></script>
   <script>
-    const points = ${JSON.stringify(points)};
-    const user = ${JSON.stringify(user)};
+    const points = ${JSON.stringify(points).replace(/</g, '\\u003c')};
+    const user = ${JSON.stringify(user).replace(/</g, '\\u003c')};
     const map = new maplibregl.Map({
       container: 'map',
-      style: 'https://tiles.openfreemap.org/styles/liberty',
+      style: 'https://tiles.openfreemap.org/styles/${theme === 'dark' ? 'dark' : 'liberty'}',
       center: [user.longitude, user.latitude],
       zoom: 11.8,
       attributionControl: false
@@ -71,11 +79,15 @@ function buildMapHtml(
       new maplibregl.Marker({ element: marker }).setLngLat([point.longitude, point.latitude]).addTo(map);
       bounds.extend([point.longitude, point.latitude]);
     });
-    const userMarker = document.createElement('div');
+    if (${showUserLocation}) {
+      const userMarker = document.createElement('div');
     userMarker.className = 'user-marker';
     new maplibregl.Marker({ element: userMarker }).setLngLat([user.longitude, user.latitude]).addTo(map);
     bounds.extend([user.longitude, user.latitude]);
+      }
+    const loadTimeout = setTimeout(() => window.ReactNativeWebView.postMessage('map-error'), 18000);
     map.on('load', () => {
+      clearTimeout(loadTimeout);
       if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 54, maxZoom: 13, duration: 0 });
       window.ReactNativeWebView.postMessage('ready');
     });
@@ -91,26 +103,42 @@ export function StationMap({
   userCoordinate,
   selectedStationId,
   onSelectStation,
+  theme = 'dark',
+  showUserLocation = false,
+  height = 310,
 }: StationMapProps) {
-  const [ready, setReady] = useState(false);
-  const [error, setError] = useState(false);
+  const [loadedHtml, setLoadedHtml] = useState('');
+  const [failedHtml, setFailedHtml] = useState('');
   const html = useMemo(
-    () => buildMapHtml(stations, chargers, userCoordinate, selectedStationId),
-    [chargers, selectedStationId, stations, userCoordinate],
+    () =>
+      buildMapHtml(stations, chargers, userCoordinate, selectedStationId, theme, showUserLocation),
+    [chargers, selectedStationId, stations, userCoordinate, theme, showUserLocation],
   );
 
-  if (error) {
+  if (failedHtml === html) {
     return (
       <View style={styles.fallback}>
         <Text style={styles.fallbackTitle}>Mapa temporariamente indisponível</Text>
-        <Text style={styles.fallbackCopy}>A lista de eletropostos continua disponível logo abaixo.</Text>
+        <Text style={styles.fallbackCopy}>
+          A lista de eletropostos continua disponível logo abaixo.
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            setFailedHtml('');
+            setLoadedHtml('');
+          }}
+          style={styles.retryButton}
+        >
+          <Text style={styles.retryText}>Recarregar mapa</Text>
+        </Pressable>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {!ready ? (
+    <View style={[styles.container, { height }]}>
+      {loadedHtml !== html ? (
         <View style={styles.loading}>
           <ActivityIndicator color={Colors.coral} />
           <Text style={styles.loadingText}>Carregando mapa…</Text>
@@ -121,12 +149,15 @@ export function StationMap({
         applicationNameForUserAgent="EMPSCharge/1.0 (+https://app.emps.com.br)"
         cacheEnabled
         javaScriptEnabled
-        onError={() => setError(true)}
+        onError={() => setFailedHtml(html)}
         onMessage={(event) => {
           const message = event.nativeEvent.data;
-          if (message === 'ready') setReady(true);
-          if (message === 'map-error') setError(true);
-          if (message.startsWith('station:')) onSelectStation(message.replace('station:', ''));
+          if (message === 'ready') setLoadedHtml(html);
+          if (message === 'map-error') setFailedHtml(html);
+          if (message.startsWith('station:')) {
+            const id = message.slice('station:'.length);
+            if (stations.some((station) => station.id === id)) onSelectStation(id);
+          }
         }}
         originWhitelist={['https://*']}
         source={{ html, baseUrl: 'https://app.emps.com.br' }}
@@ -141,10 +172,12 @@ export function StationMap({
 }
 
 const styles = StyleSheet.create({
+  retryButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
+  retryText: { color: Colors.coralText, fontFamily: Fonts.semiBold, fontSize: 12 },
   container: {
     backgroundColor: Colors.surface,
     borderColor: Colors.border,
-    borderRadius: Radius.large,
+    borderRadius: 12,
     borderWidth: 1,
     height: 310,
     overflow: 'hidden',
@@ -167,7 +200,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#111318E8',
     borderRadius: Radius.pill,
-    bottom: 12,
+    top: 12,
     flexDirection: 'row',
     gap: 6,
     left: 12,
@@ -176,12 +209,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   legendDot: { backgroundColor: Colors.coral, borderRadius: 4, height: 7, width: 7 },
-  legendText: { color: Colors.textMuted, fontFamily: Fonts.medium, fontSize: 9 },
+  legendText: { color: Colors.textMuted, fontFamily: Fonts.medium, fontSize: 10 },
   fallback: {
     alignItems: 'center',
     backgroundColor: Colors.surface,
     borderColor: Colors.border,
-    borderRadius: Radius.large,
+    borderRadius: 12,
     borderWidth: 1,
     gap: 5,
     height: 230,

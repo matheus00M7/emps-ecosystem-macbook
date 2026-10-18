@@ -3,10 +3,19 @@ import { Directory, File, Paths } from 'expo-file-system';
 
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
-import type { ChargingSession } from '../domain/models';
+import type { Charger, ChargingSession } from '../domain/models';
 import { receiptPdf } from './receipt-pdf';
+import { paymentAuthorizationPdf } from './payment-authorization-pdf';
 
 export async function shareReceiptPdf(session: ChargingSession, station: string, charger: string) {
+  return shareDocument(logo => receiptPdf(session, station, charger, logo), 'receipt', 'Compartilhar comprovante EMPS');
+}
+
+export async function sharePaymentAuthorizationPdf(session: ChargingSession, station: string, charger: Charger, demoMode = false) {
+  return shareDocument(logo => paymentAuthorizationPdf(session, station, charger, logo, demoMode), 'authorization', 'Compartilhar autorização Demo');
+}
+
+async function shareDocument(render: (logo: Uint8Array) => Promise<Uint8Array>, prefix: string, title: string) {
   if (Platform.OS === 'web') throw new Error('Abra o App no Android ou iOS para gerar e compartilhar o PDF. Os dados do recibo continuam disponíveis nesta tela.');
   if (!await Sharing.isAvailableAsync()) throw new Error('O compartilhamento não está disponível neste aparelho. Consulte o recibo nesta tela.');
   const logo = await Asset.fromModule(require('../../assets/images/emps-logo-red.png')).downloadAsync();
@@ -15,13 +24,13 @@ export async function shareReceiptPdf(session: ChargingSession, station: string,
   const cache = new Directory(Paths.cache, 'emps-receipts');
   cache.create({idempotent:true});
   for (const entry of cache.list()) {
-    const match = /^receipt-(\d+)-[a-z0-9]+\.pdf$/.exec(entry.name);
+    const match = /^(?:receipt|authorization)-(\d+)-[a-z0-9]+\.pdf$/.exec(entry.name);
     if (entry instanceof File && match && Date.now()-Number(match[1])>86_400_000) entry.delete();
   }
-  const bytes = await receiptPdf(session,station,charger,logoBytes);
-  const target = new File(cache, 'receipt-'+Date.now()+'-'+Math.random().toString(36).slice(2)+'.pdf');
+  const bytes = await render(logoBytes);
+  const target = new File(cache, prefix+'-'+Date.now()+'-'+Math.random().toString(36).slice(2)+'.pdf');
   target.create(); target.write(bytes);
   // Android can resolve the share intent before the receiving app reads the file.
   // Keep it in the app-private cache and expire it on a subsequent share after 24h.
-  await Sharing.shareAsync(target.uri,{mimeType:'application/pdf',UTI:'com.adobe.pdf',dialogTitle:'Compartilhar comprovante EMPS'});
+  await Sharing.shareAsync(target.uri,{mimeType:'application/pdf',UTI:'com.adobe.pdf',dialogTitle:title});
 }

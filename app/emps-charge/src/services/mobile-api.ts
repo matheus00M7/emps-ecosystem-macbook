@@ -55,6 +55,7 @@ export interface MobileApi {
     idempotencyKey: string,
   ): Promise<PaymentIntent>;
   paymentIntent(paymentIntentId: string): Promise<PaymentIntent>;
+  cancelPaymentIntent(paymentIntentId: string): Promise<void>;
   billingQuote(id:string):Promise<{frozen:boolean;breakdown:{customer:NonNullable<ChargingSession['billing']>}}> ;
   disconnectSession(id:string):Promise<unknown>;
   paySession(id:string):Promise<{status:string;provider:string;providerClientSecret?:string}>;
@@ -313,6 +314,10 @@ export function createMobileApi({
       request<PaymentIntent>(
         `/mobile/v1/payment-intents/${encodeURIComponent(paymentIntentId)}`,
       ),
+    cancelPaymentIntent: (paymentIntentId) =>
+      request<void>(`/mobile/v1/payment-intents/${encodeURIComponent(paymentIntentId)}/cancel`, {
+        method: 'POST',
+      }),
     startCharging: (input) =>
       request<ChargingSession>('/mobile/v1/charging-sessions/start', {
         body: JSON.stringify(input),

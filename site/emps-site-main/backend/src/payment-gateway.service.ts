@@ -36,10 +36,11 @@ type CreateGatewayIntentInput = {
   spendingLimit: number | null;
 };
 
-export function paymentCapabilities(){
-  const mode=(process.env.PAYMENT_PROVIDER??'sandbox').toLowerCase();
-  const demo=mode==='sandbox'||(process.env.ENABLE_DEMO_PAYMENTS==='true'&&process.env.NODE_ENV!=='production');
-  const key=process.env.STRIPE_PUBLISHABLE_KEY;
+export function paymentCapabilities(env: NodeJS.ProcessEnv = process.env){
+  const mode=(env.PAYMENT_PROVIDER??'sandbox').toLowerCase();
+  const testStripe = mode === 'stripe' && /^(sk|rk)_test_/.test(env.STRIPE_SECRET_KEY ?? '');
+  const demo=mode==='sandbox'||(env.ENABLE_DEMO_PAYMENTS==='true'&&(env.NODE_ENV!=='production'||testStripe));
+  const key=env.STRIPE_PUBLISHABLE_KEY;
   return {paymentProvider:mode,demoPayments:demo,stripePublishableKey:key?.startsWith('pk_test_')?key:undefined};
 }
 

@@ -1,5 +1,16 @@
 # Documentacao EMPS
 
+[Publicacao para continuar no MacBook, com limites de integracao](change-requests/CR-2026-10-18-001-github-macbook.md).
+[Instalar e executar no MacBook](MACBOOK_SETUP.md).
+
+[Marca EMPS limpa e padronizada no site, app e novos comprovantes](change-requests/CR-2026-10-16-003-brand-cleanup.md).
+
+[Checkout do app, Pix/carteira Demo, Stripe e PDF; ativacao oficial pendente](change-requests/CR-2026-10-16-002-mobile-payments.md).
+
+[Correcao do QR entre painel local e aplicativo](change-requests/CR-2026-10-16-001-qr-site-app.md).
+
+[Revisao do Inicio, leitor, recargas e perfil do aplicativo](change-requests/CR-2026-10-15-002-mobile-experience.md).
+
 ## Guias atuais
 
 | Documento | Finalidade |
@@ -17,6 +28,8 @@
 | [Release compativel](COMPATIBILITY_RELEASE.md) | Homologacao, opt-in e limites de rollback |
 
 ## Historico
+
+[Revisao do app e login web local, sem deploy](change-requests/CR-2026-10-15-001-mobile-review-and-web-login.md).
 
 [Integracao no historico do Tommaso e correcoes de compatibilidade](change-requests/CR-2026-10-13-006-compatibility-integration.md).
 [Relatorio completo dessa integracao em PDF](change-requests/pdf/EMPS_INTEGRACAO_COMPATIVEL_TOMMASO_2026-10-13.pdf).

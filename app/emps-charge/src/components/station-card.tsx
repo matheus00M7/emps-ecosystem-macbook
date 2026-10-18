@@ -1,29 +1,30 @@
 import { ChevronRight, MapPin, Zap } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import {StationPhoto} from '@/components/station-photo';
+import { StationPhoto } from '@/components/station-photo';
 import { StatusPill } from '@/components/ui/status-pill';
-import { Colors, Fonts, Radius, Shadow } from '@/constants/theme';
+import { Colors, Fonts } from '@/constants/theme';
 import { useApp } from '@/context/app-context';
 import type { Station } from '@/domain/models';
 import { formatDistance } from '@/utils/formatters';
 
 type StationCardProps = {
   station: Station;
-  distanceKm: number;
+  distanceKm?: number;
   onPress: () => void;
 };
 
 export function StationCard({ station, distanceKm, onPress }: StationCardProps) {
   const { getStationChargers } = useApp();
   const stationChargers = getStationChargers(station.id);
-  const available = station.availableNow===false?0:stationChargers.filter((charger) => charger.status === 'available').length;
+  const available =
+    station.availableNow === false
+      ? 0
+      : stationChargers.filter((charger) => charger.status === 'available').length;
   const bestCharger =
     stationChargers.find((charger) => charger.status === 'available') ?? stationChargers[0];
   const maximumPower =
-    stationChargers.length > 0
-      ? Math.max(...stationChargers.map((item) => item.powerKw))
-      : null;
+    stationChargers.length > 0 ? Math.max(...stationChargers.map((item) => item.powerKw)) : null;
   const minimumPrice =
     stationChargers.length > 0
       ? Math.min(...stationChargers.map((item) => item.pricePerKwh))
@@ -35,29 +36,49 @@ export function StationCard({ station, distanceKm, onPress }: StationCardProps) 
       accessibilityRole="button"
       accessibilityLabel={`${station.name}, ${availableLabel}`}
       onPress={onPress}
-      style={({ pressed }) => [styles.card, Shadow.card, pressed && styles.pressed]}>
+      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+    >
       <View style={styles.topRow}>
-        {station.photos?.[0]?<StationPhoto compact path={station.photos[0].path}/>:<View style={styles.iconBox}>
-          <Zap color={Colors.coral} fill={`${Colors.coral}25`} size={22} />
-        </View>}
+        {station.photos?.[0] ? (
+          <StationPhoto compact path={station.photos[0].path} />
+        ) : (
+          <View style={styles.iconBox}>
+            <Zap color={Colors.coral} fill={`${Colors.coral}25`} size={22} />
+          </View>
+        )}
         <View style={styles.copy}>
           <Text style={styles.name}>{station.name}</Text>
           <View style={styles.addressRow}>
             <MapPin color={Colors.textFaint} size={13} />
             <Text numberOfLines={1} style={styles.address}>
-              {station.neighborhood} · {formatDistance(distanceKm)}
+              {[
+                station.neighborhood || station.city || station.address,
+                distanceKm === undefined ? null : formatDistance(distanceKm),
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </Text>
           </View>
         </View>
         <ChevronRight color={Colors.textFaint} size={21} />
       </View>
 
-      {station.availableNow===false&&<Text style={styles.detail}>Fora do horário de recarga</Text>}
+      {station.availableNow === false && (
+        <Text style={styles.detail}>Fora do horário de recarga</Text>
+      )}
       <View style={styles.bottomRow}>
-        {station.availableNow!==false&&<StatusPill status={available > 0 ? 'available' : bestCharger?.status ?? 'offline'} compact />}
-        <Text style={styles.detail}>{available}/{stationChargers.length} livres</Text>
+        {station.availableNow !== false && bestCharger && (
+          <StatusPill status={available > 0 ? 'available' : bestCharger.status} compact />
+        )}
+        <Text style={styles.detail}>
+          {stationChargers.length
+            ? `${available}/${stationChargers.length} livres`
+            : 'Disponibilidade não informada'}
+        </Text>
         <View style={styles.dot} />
-        <Text style={styles.detail}>{maximumPower ? `até ${maximumPower} kW` : 'consultando potência'}</Text>
+        <Text style={styles.detail}>
+          {maximumPower ? `até ${maximumPower} kW` : 'consultando potência'}
+        </Text>
         <Text style={styles.price}>
           {minimumPrice === null
             ? 'tarifa indisponível'
@@ -72,10 +93,10 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.surface,
     borderColor: Colors.borderSoft,
-    borderRadius: Radius.large,
+    borderRadius: 12,
     borderWidth: 1,
-    gap: 17,
-    padding: 16,
+    gap: 12,
+    padding: 14,
   },
   pressed: { opacity: 0.82, transform: [{ scale: 0.99 }] },
   topRow: { alignItems: 'center', flexDirection: 'row', gap: 12 },
@@ -97,12 +118,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   bottomRow: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  detail: { color: Colors.textMuted, fontFamily: Fonts.medium, fontSize: 10 },
+  detail: { color: Colors.textMuted, fontFamily: Fonts.medium, fontSize: 11 },
   dot: { backgroundColor: Colors.textFaint, borderRadius: 2, height: 3, width: 3 },
   price: {
     color: Colors.text,
     fontFamily: Fonts.semiBold,
-    fontSize: 10,
+    fontSize: 12,
     marginLeft: 'auto',
   },
 });

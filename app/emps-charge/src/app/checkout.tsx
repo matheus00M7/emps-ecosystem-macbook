@@ -1,361 +1,264 @@
 import * as Haptics from 'expo-haptics';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import {
-  Check,
-  CreditCard,
-  Info,
-  LockKeyhole,
-  QrCode,
-  ShieldCheck,
-  WalletCards,
-  Zap,
-} from 'lucide-react-native';
-import type { LucideIcon } from 'lucide-react-native';
+import { Check, ChevronDown, CreditCard, Info, QrCode, ShieldCheck, WalletCards, Zap } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View, Pressable } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/ui/app-button';
 import { PageHeader } from '@/components/ui/page-header';
-import { Colors, Fonts, MaxContentWidth, Radius } from '@/constants/theme';
-import type { PaymentMethod } from '@/domain/models';
+import { Colors, Fonts } from '@/constants/theme';
 import { useApp } from '@/context/app-context';
+import { usePreferences } from '@/context/preferences-context';
+import { availablePayment, checkoutAmount, demoPayment } from '@/domain/checkout';
+import type { PaymentMethod } from '@/domain/models';
+import { connectorLabel } from '@/domain/station-filters';
 import { formatCurrency } from '@/utils/formatters';
 
-type MethodOption = {
-  id: PaymentMethod;
-  title: string;
-  subtitle: string;
-  Icon: LucideIcon;
-  badge?: string;
-};
-
-const METHODS: MethodOption[] = [
-  { id: 'pix', title: 'Pix Demo / Sandbox', subtitle: 'Demonstração, sem integração bancária real', Icon: QrCode },
-  { id: 'card', title: 'Cartão', subtitle: 'Stripe Sandbox · cobrança após a recarga', Icon: CreditCard },
-  { id: 'wallet', title: 'Apple Pay / Google Pay', subtitle: 'Demonstração · sem cobrança real', Icon: WalletCards },
+const METHODS = [
+  { id: 'pix' as const, title: 'Pix', Icon: QrCode },
+  { id: 'card' as const, title: 'Cartão', Icon: CreditCard },
+  { id: 'wallet' as const, title: Platform.OS === 'ios' ? 'Apple Pay' : Platform.OS === 'android' ? 'Google Pay' : 'Apple Pay / Google Pay', Icon: WalletCards },
 ];
-
-const LIMITS: number[] = [10, 20, 30];
+const LIMITS = [10, 20, 30];
 
 export default function CheckoutScreen() {
   const { chargerId } = useLocalSearchParams<{ chargerId: string }>();
   const router = useRouter();
-  const {
-    activeSession,
-    getCharger,
-    getStation,
-    hasQrBinding,
-    isDemoMode,
-    loadCharger,
-    authorizeSession,
-    startSession,
-  } = useApp();
+  const { activeSession, getCharger, getStation, hasQrBinding, isDemoMode, loadCharger, authorizeSession, cancelSessionAuthorization, startSession } = useApp();
+  const { preferences } = usePreferences();
   const charger = getCharger(chargerId);
   const station = charger ? getStation(charger.stationId) : undefined;
-  const [method, setMethod] = useState<PaymentMethod>('card');
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [limit, setLimit] = useState<number | null>(20);
-  const [customAmount,setCustomAmount]=useState('');
+  const [customAmount, setCustomAmount] = useState('');
   const [loading, setLoading] = useState(false);
   const [authorized, setAuthorized] = useState(false);
-  const submitting = useRef(false);
-  const [loadingLabel, setLoadingLabel] = useState('Confirmar e iniciar');
+  const [loadingLabel, setLoadingLabel] = useState('');
   const [error, setError] = useState('');
   const [entityLoading, setEntityLoading] = useState(!charger || !station);
+  const [conditionsOpen, setConditionsOpen] = useState(false);
+  const submitting = useRef(false);
+  const mounted = useRef(true);
 
   useEffect(() => {
     let active = true;
-    loadCharger(chargerId)
-      .catch((loadError) => {
-        if (active) {
-          setError(loadError instanceof Error ? loadError.message : 'Carregador não encontrado.');
-        }
-      })
-      .finally(() => active && setEntityLoading(false));
-    return () => {
-      active = false;
-    };
+    mounted.current = true;
+    void loadCharger(chargerId).catch(cause => {
+      if (active) setError(cause instanceof Error ? cause.message : 'Carregador não encontrado.');
+    }).finally(() => { if (active) setEntityLoading(false); });
+    return () => { active = false; mounted.current = false; };
   }, [chargerId, loadCharger]);
 
-  if (activeSession) return <Redirect href="/charging" />;
+  const paymentOptions = charger?.paymentOptions;
+  const method = selectedMethod && availablePayment(paymentOptions, selectedMethod, isDemoMode)
+    ? selectedMethod : METHODS.find(item => availablePayment(paymentOptions, item.id, isDemoMode))?.id ?? 'card';
+  const simulated = demoPayment(paymentOptions, method, isDemoMode);
 
-  if ((!charger || !station) && entityLoading) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.missing}>
-          <ActivityIndicator color={Colors.coral} />
-          <Text style={styles.missingTitle}>Preparando pagamento…</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!charger || !station) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.missing}>
-          <Text style={styles.missingTitle}>Não foi possível montar o pagamento.</Text>
-          <AppButton onPress={() => router.replace('/')} title="Voltar ao início" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!isDemoMode && !hasQrBinding(charger.id)) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.missing}>
-          <Text style={styles.missingTitle}>Escaneie o QR da vaga antes do pagamento.</Text>
-          <AppButton onPress={() => router.replace('/scan')} title="Abrir leitor de QR" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const estimatedEnergy = limit ? limit / charger.pricePerKwh : null;
-
-  async function confirmPayment() {
-    if (!charger || submitting.current) return;
-    if(limit===null||limit<1||limit>10000){setError('Informe um valor entre R$1 e R$10.000, com até duas casas decimais.');return}
-    submitting.current = true;
-    setLoading(true);
-    setError('');
-    setLoadingLabel('Confirmando pagamento…');
-    setLoadingLabel(authorized ? 'Liberando carregador…' : 'Autorizando reserva…');
-    try {
-      if (!authorized) {
-        await authorizeSession({chargerId:charger.id,paymentMethod:method,spendingLimit:limit});
-        setAuthorized(true);
-        return;
-      }
-      await startSession({ chargerId: charger.id, paymentMethod: method, spendingLimit: limit });
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace('/charging');
-    } catch (paymentError) {
-      if (authorized) setAuthorized(false);
-      setError(paymentError instanceof Error ? paymentError.message : 'Não foi possível iniciar a recarga.');
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } finally {
-      submitting.current = false;
-      setLoading(false);
-      setLoadingLabel('Confirmar e iniciar');
+  function vibrate(type: Haptics.NotificationFeedbackType) {
+    if (Platform.OS !== 'web' && preferences.vibration) {
+      void Haptics.notificationAsync(type).catch(() => {});
     }
   }
 
+  async function changeSelection(apply: () => void) {
+    if (submitting.current) return;
+    submitting.current = true;
+    setLoading(true);
+    setLoadingLabel('Atualizando pagamento…');
+    try {
+      await cancelSessionAuthorization();
+      if (!mounted.current) return;
+      setAuthorized(false);
+      setError('');
+      apply();
+    } catch (cause) {
+      if (mounted.current) setError(cause instanceof Error ? cause.message : 'Não foi possível alterar o pagamento. Tente novamente.');
+    } finally {
+      submitting.current = false;
+      if (mounted.current) setLoading(false);
+    }
+  }
+
+  async function confirmPayment() {
+    if (!charger || submitting.current) return;
+    if (limit === null || !Number.isFinite(limit) || limit < 1 || limit > 10000) {
+      setError('Informe um valor entre R$ 1,00 e R$ 10.000,00, com até duas casas decimais.');
+      return;
+    }
+    submitting.current = true;
+    setLoading(true);
+    setError('');
+    try {
+      if (!authorized) {
+        setLoadingLabel(simulated ? 'Confirmando teste…' : 'Autorizando cartão…');
+        await authorizeSession({ chargerId: charger.id, paymentMethod: method, spendingLimit: limit });
+        if (!mounted.current) return;
+        setAuthorized(true);
+        if (!simulated) return;
+      }
+      setLoadingLabel('Iniciando recarga…');
+      await startSession({ chargerId: charger.id, paymentMethod: method, spendingLimit: limit });
+      if (mounted.current) {
+        vibrate(Haptics.NotificationFeedbackType.Success);
+        router.replace('/charging');
+      }
+    } catch (cause) {
+      if (mounted.current) {
+        setAuthorized(false);
+        setError(cause instanceof Error ? cause.message : 'Não foi possível confirmar a recarga. Tente novamente.');
+        vibrate(Haptics.NotificationFeedbackType.Error);
+      }
+    } finally {
+      submitting.current = false;
+      if (mounted.current) setLoading(false);
+    }
+  }
+
+  if (activeSession) return <Redirect href="/charging" />;
+  if ((!charger || !station) && entityLoading) return (
+    <SafeAreaView style={styles.safeArea}><View style={styles.missing}><ActivityIndicator color={Colors.coral} /><Text style={styles.missingTitle}>Preparando pagamento…</Text></View></SafeAreaView>
+  );
+  if (!charger || !station) return (
+    <SafeAreaView style={styles.safeArea}><View style={styles.missing}><Text style={styles.missingTitle}>{error || 'Não foi possível carregar o pagamento.'}</Text><AppButton title="Voltar ao início" onPress={() => router.replace('/')} /></View></SafeAreaView>
+  );
+  if (!isDemoMode && !hasQrBinding(charger.id)) return (
+    <SafeAreaView style={styles.safeArea}><View style={styles.missing}><Text style={styles.missingTitle}>Escaneie o QR da vaga antes de continuar.</Text><AppButton title="Abrir leitor de QR" onPress={() => router.replace('/scan')} /></View></SafeAreaView>
+  );
+
+  const estimatedEnergy = limit && Number.isFinite(charger.pricePerKwh) && charger.pricePerKwh > 0 ? limit / charger.pricePerKwh : null;
+  const buttonTitle = simulated ? 'Confirmar teste e iniciar' : authorized ? 'Iniciar recarga' : 'Autorizar cartão';
+
   return (
-    <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scroll} role="main" showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
-          <PageHeader title="Pagamento" subtitle={`${station.name} · ${charger.bay}`} />
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} role="main">
+          <View style={styles.content}>
+            <PageHeader title="Pagamento" subtitle={station.name} />
+            <View style={styles.location}><Zap size={17} color={Colors.coral} /><Text style={styles.locationText}>{charger.bay} · {connectorLabel(charger.connectorType)} · {charger.powerKw} kW</Text></View>
 
-          <View style={styles.demoBanner}>
-            <Info color={isDemoMode ? Colors.yellow : Colors.green} size={17} />
-            <View style={styles.demoCopy}>
-              <Text style={[styles.demoTitle, !isDemoMode && styles.connectedTitle]}>
-                {isDemoMode ? 'Ambiente demonstrativo' : 'Pagamento protegido pela EMPS'}
-              </Text>
-              <Text style={styles.demoText}>
-                {isDemoMode
-                  ? 'Nenhuma cobrança real será realizada nesta versão.'
-                  : 'A autorização será confirmada pelo servidor antes de liberar o carregador.'}
-              </Text>
-            </View>
-          </View>
-
-          <Text style={styles.sectionTitle}>Como você quer pagar?</Text>
-          <View style={styles.methodList}>
-            {charger.chargePolicyVersion?<Text style={{color:Colors.textMuted,fontSize:12,lineHeight:19}}>Limite autorizado de recarga. O consumo é fechado após a parada da energia, independentemente da retirada. Carência para retirada: 10 min após a parada confirmada. Tarifa de permanência ainda não configurada.</Text>:charger.tariff&&<Text style={{color:Colors.textMuted,fontSize:12,lineHeight:19}}>Tarifa variável: {formatCurrency(Number(charger.tariff.minimum_tariff_per_kwh))} a {formatCurrency(Number(charger.tariff.maximum_tariff_per_kwh))}/kWh. Carência após fim da carga: {charger.tariff.overstay_grace_minutes} min; permanência {formatCurrency(Number(charger.tariff.overstay_fee_per_minute))}/min iniciado, até {formatCurrency(Number(charger.tariff.overstay_fee_cap))}. Reserva antes de iniciar; acerto do total real após encerrar e confirmar a retirada.</Text>}
-          {METHODS.map(({ id, title, subtitle, Icon, badge }) => {
-              const selected = method === id;
-              return (
-                <Pressable
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: selected }}
-                  aria-checked={selected}
-                  key={id}
-                  disabled={loading || authorized || (id!=='card'&&!isDemoMode&&!charger.paymentOptions?.demoPayments)}
-                  onPress={() => setMethod(id)}
-                  style={({ pressed }) => [
-                    styles.methodCard,
-                    selected && styles.methodSelected,
-                    pressed && styles.pressed,
-                  ]}>
-                  <View style={[styles.methodIcon, selected && styles.methodIconSelected]}>
-                    <Icon color={selected ? Colors.coral : Colors.textMuted} size={22} />
-                  </View>
-                  <View style={styles.methodCopy}>
-                    <View style={styles.methodTitleRow}>
-                      <Text style={styles.methodTitle}>{title}</Text>
-                      {badge ? <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View> : null}
-                    </View>
-                    <Text style={styles.methodSubtitle}>
-                      {id==='card'?(charger.paymentOptions?.paymentProvider==='sandbox'?'Cartão Demo / Sandbox':'Cartão Stripe Sandbox'):isDemoMode||charger.paymentOptions?.demoPayments?subtitle:'Indisponível neste ambiente'}
-                    </Text>
-                  </View>
-                  <View style={[styles.radio, selected && styles.radioSelected]}>
-                    {selected ? <Check color={Colors.white} size={13} strokeWidth={3} /> : null}
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={styles.sectionHeadingRow}>
-            <Text style={styles.sectionTitle}>Reserva para autorização</Text>
-            <Text style={styles.optional}>Não é o preço final</Text>
-          </View>
-          <View style={styles.limitRow}>
-            {LIMITS.map((item) => {
-              const selected = limit === item;
-              return (
-                <Pressable
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: selected }}
-                  aria-checked={selected}
-                  key={item ?? 'no-limit'}
-                  disabled={loading || authorized}
-                  onPress={() => {setLimit(item);setCustomAmount('')}}
-                  style={({ pressed }) => [
-                    styles.limitPill,
-                    selected && styles.limitSelected,
-                    pressed && styles.pressed,
-                  ]}>
-                  <Text style={[styles.limitText, selected && styles.limitTextSelected]}>
-                    {item ? formatCurrency(item) : 'Sem limite'}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Text style={styles.sectionTitle}>Outro valor (R$)</Text>
-          <TextInput accessibilityLabel="Outro valor em reais" keyboardType="decimal-pad" editable={!loading&&!authorized} placeholder="Ex.: 12,50" placeholderTextColor={Colors.textMuted} value={customAmount} onChangeText={value=>{setCustomAmount(value);const valid=/^\d+(?:[.,]\d{0,2})?$/.test(value);setLimit(valid?Number(value.replace(',','.')):null)}} style={{color:Colors.text,padding:16,borderWidth:1,borderColor:Colors.border,borderRadius:12,marginBottom:20}}/>
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryHeader}>
-              <View style={styles.summaryIcon}><Zap color={Colors.coral} size={21} /></View>
-              <View style={styles.summaryCopy}>
-                <Text style={styles.summaryTitle}>{charger.bay} · {charger.connectorType}</Text>
-                <Text style={styles.summarySubtitle}>{station.name}</Text>
+            <View style={styles.notice} accessibilityRole="text">
+              <Info color={simulated ? Colors.yellow : Colors.textMuted} size={19} />
+              <View style={styles.noticeCopy}>
+                <Text style={styles.noticeTitle}>{simulated ? 'Pagamento de demonstração' : 'Autorização pelo cartão'}</Text>
+                <Text style={styles.body}>{simulated ? 'Confirme para registrar o teste e iniciar a recarga. Nenhum dinheiro será cobrado.' : 'O valor é autorizado antes de iniciar. O acerto acontece conforme o consumo da recarga.'}</Text>
               </View>
             </View>
-            <View style={styles.separator} />
-            <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Tarifa</Text><Text style={styles.summaryValue}>{formatCurrency(charger.pricePerKwh)}/kWh</Text></View>
-            <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Potência máxima</Text><Text style={styles.summaryValue}>{charger.powerKw} kW</Text></View>
-            <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Limite autorizado</Text><Text style={styles.summaryValue}>{limit ? formatCurrency(limit) : 'Sem limite'}</Text></View>
-            {estimatedEnergy ? <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Energia estimada</Text><Text style={styles.summaryValue}>até {estimatedEnergy.toFixed(1).replace('.', ',')} kWh</Text></View> : null}
+
+            <Text style={styles.sectionTitle}>Forma de pagamento</Text>
+            <View style={styles.methods} accessibilityRole="radiogroup" accessibilityLabel="Forma de pagamento">
+              {METHODS.map(({ id, title, Icon }) => {
+                const selected = method === id;
+                const available = availablePayment(paymentOptions, id, isDemoMode);
+                const demo = demoPayment(paymentOptions, id, isDemoMode);
+                return (
+                  <Pressable key={id} accessibilityRole="radio" accessibilityLabel={`${title}${demo ? ' Demo' : ''}`} accessibilityState={{ checked: selected, disabled: loading || !available }} aria-checked={selected}
+                    disabled={loading || !available}
+                    onPress={() => { if (!selected) void changeSelection(() => setSelectedMethod(id)); }}
+                    style={({ pressed }) => [styles.method, selected && styles.methodSelected, !available && styles.unavailable, pressed && styles.pressed]}>
+                    <View style={[styles.methodIcon, selected && styles.methodIconSelected]}><Icon size={22} color={selected ? Colors.coral : Colors.textMuted} /></View>
+                    <View style={styles.methodCopy}>
+                      <View style={styles.methodHeading}><Text style={styles.methodTitle}>{title}</Text>{demo && <Text style={styles.demoTag}>DEMO</Text>}</View>
+                      <Text style={styles.caption}>{!available ? 'Indisponível na configuração atual' : demo ? 'Confirmação fictícia, sem cobrança' : 'Cartão de teste · Stripe Sandbox'}</Text>
+                    </View>
+                    <View style={[styles.radio, selected && styles.radioSelected]}>{selected && <Check color={Colors.white} size={12} strokeWidth={3} />}</View>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Limite da recarga</Text><Text style={styles.caption}>{simulated ? 'Valor de teste' : 'Valor máximo'}</Text></View>
+            <View style={styles.amounts} accessibilityRole="radiogroup" accessibilityLabel="Limite da recarga">
+              {LIMITS.map(amount => {
+                const selected = limit === amount && !customAmount;
+                return <Pressable key={amount} accessibilityRole="radio" accessibilityLabel={formatCurrency(amount)} accessibilityState={{ checked: selected, disabled: loading }} aria-checked={selected} disabled={loading}
+                  onPress={() => void changeSelection(() => { setLimit(amount); setCustomAmount(''); })}
+                  style={({ pressed }) => [styles.amount, selected && styles.amountSelected, pressed && styles.pressed]}>
+                  <Text style={[styles.amountText, selected && styles.amountSelectedText]}>{formatCurrency(amount)}</Text>
+                </Pressable>;
+              })}
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Outro valor</Text>
+              <View style={[styles.inputWrap, authorized && styles.unavailable]}><Text style={styles.currency}>R$</Text>
+                <TextInput accessibilityLabel="Outro valor em reais" keyboardType="decimal-pad" editable={!loading && !authorized} maxLength={9} placeholder="Ex.: 12,50" placeholderTextColor={Colors.textFaint} value={customAmount}
+                  onChangeText={value => { setCustomAmount(value); setLimit(checkoutAmount(value)); setError(''); }} style={styles.input} />
+              </View>
+            </View>
+
+            <View style={styles.summary}>
+              <View style={styles.summaryRow}><Text style={styles.body}>Tarifa</Text><Text style={styles.summaryValue}>{formatCurrency(charger.pricePerKwh)}/kWh</Text></View>
+              <View style={styles.summaryRow}><Text style={styles.body}>Limite escolhido</Text><Text style={styles.summaryStrong}>{limit === null ? 'Informe um valor' : formatCurrency(limit)}</Text></View>
+              {estimatedEnergy !== null && <View style={styles.summaryRow}><Text style={styles.body}>Energia estimada</Text><Text style={styles.summaryValue}>até {estimatedEnergy.toFixed(1).replace('.', ',')} kWh</Text></View>}
+              <Pressable accessibilityRole="button" accessibilityLabel="Condições da recarga" accessibilityState={{ expanded: conditionsOpen }} aria-expanded={conditionsOpen} onPress={() => setConditionsOpen(value => !value)} style={styles.conditionsButton}>
+                <Text style={styles.conditionsLabel}>Condições da recarga</Text><ChevronDown size={17} color={Colors.textMuted} style={conditionsOpen ? styles.rotated : undefined} />
+              </Pressable>
+              {conditionsOpen && <Text style={styles.conditionsText}>
+                {charger.chargePolicyVersion ? 'A energia é interrompida ao atingir o limite. Após a parada confirmada, há 10 minutos para retirar o conector. A permanência é contabilizada separadamente; a tarifa de permanência ainda não foi definida.' : charger.tariff ? `A tarifa varia de ${formatCurrency(Number(charger.tariff.minimum_tariff_per_kwh))} a ${formatCurrency(Number(charger.tariff.maximum_tariff_per_kwh))}/kWh. Carência para retirada: ${charger.tariff.overstay_grace_minutes} minutos. Permanência: ${charger.tariff.overstay_fee_per_minute == null ? 'não informada' : formatCurrency(Number(charger.tariff.overstay_fee_per_minute)) + '/minuto iniciado'}, limitada a ${charger.tariff.overstay_fee_cap == null ? 'valor não informado' : formatCurrency(Number(charger.tariff.overstay_fee_cap))}. O acerto segue o consumo e as condições registradas pelo servidor.` : 'O valor final depende da energia consumida. O saldo não utilizado segue as condições do meio de pagamento escolhido.'}
+              </Text>}
+            </View>
+
+            {authorized && <View style={styles.authorized}><Check size={17} color={Colors.green} /><Text style={styles.authorizedText}>Autorização confirmada</Text><Pressable accessibilityRole="button" accessibilityLabel="Alterar valor ou pagamento" disabled={loading} onPress={() => void changeSelection(() => {})}><Text style={styles.changeText}>Alterar</Text></Pressable></View>}
+            {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+            <AppButton title={loading ? loadingLabel : buttonTitle} icon={!loading ? <ShieldCheck size={19} color={Colors.white} /> : undefined} loading={loading} onPress={() => void confirmPayment()} />
+            <Text style={styles.footer}>{simulated ? 'Demonstração sem transferência bancária.' : 'Ao confirmar, você aceita a tarifa e as condições desta recarga.'}</Text>
           </View>
-
-          <View style={styles.paymentNote}>
-            <LockKeyhole color={Colors.green} size={17} />
-            <Text style={styles.paymentNoteText}>
-              {charger.tariff ? 'Reservamos o valor escolhido antes de liberar a recarga. Após a retirada, capturamos o total real e liberamos o restante. Se o total exceder a reserva ou ela expirar, será solicitada nova confirmação. Totais abaixo de R$ 0,50 seguem para o caixa.' : method === 'pix'
-                ? 'Pix Demo/Sandbox: o saldo não usado aparece como valor a devolver para o mesmo meio de pagamento. Nenhuma transação bancária real.'
-                : 'Será feita uma pré-autorização e apenas o valor consumido será capturado ao encerrar.'}
-            </Text>
-          </View>
-
-          {authorized && <Text style={styles.paymentNoteText}>Pagamento autorizado · Recarga liberada</Text>}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
-          <AppButton
-            icon={!loading ? <ShieldCheck color={Colors.white} size={19} /> : undefined}
-            loading={loading}
-            onPress={confirmPayment}
-            title={loading ? loadingLabel : authorized ? 'INICIAR RECARGA' : 'Autorizar pagamento'}
-          />
-          <Text style={styles.terms}>Ao confirmar, você aceita a tarifa e as condições desta recarga.</Text>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   safeArea: { backgroundColor: Colors.background, flex: 1 },
-  scroll: { paddingBottom: 34 },
-  content: {
-    alignSelf: 'center',
-    gap: 13,
-    maxWidth: MaxContentWidth,
-    paddingHorizontal: 18,
-    width: '100%',
-  },
-  demoBanner: {
-    alignItems: 'center',
-    backgroundColor: '#F5BE4F12',
-    borderColor: '#F5BE4F3D',
-    borderRadius: Radius.medium,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-    padding: 12,
-  },
-  demoCopy: { flex: 1 },
-  demoTitle: { color: Colors.yellow, fontFamily: Fonts.semiBold, fontSize: 10 },
-  connectedTitle: { color: Colors.green },
-  demoText: { color: Colors.textMuted, fontFamily: Fonts.regular, fontSize: 8, marginTop: 2 },
-  sectionTitle: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 15, marginTop: 10 },
-  methodList: { gap: 9 },
-  methodCard: {
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderColor: Colors.borderSoft,
-    borderRadius: Radius.medium,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 11,
-    minHeight: 70,
-    padding: 12,
-  },
-  methodSelected: { backgroundColor: '#FF323A0D', borderColor: `${Colors.coral}75` },
+  scroll: { paddingBottom: 30 },
+  content: { alignSelf: 'center', maxWidth: 560, paddingHorizontal: 20, width: '100%', gap: 14 },
+  location: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  locationText: { color: Colors.textMuted, fontFamily: Fonts.medium, fontSize: 12, flexShrink: 1 },
+  notice: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 16, borderTopWidth: 1, borderBottomWidth: 1, borderColor: Colors.borderSoft },
+  noticeCopy: { flex: 1, gap: 5 },
+  noticeTitle: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 14 },
+  body: { color: Colors.textMuted, fontFamily: Fonts.regular, fontSize: 13, lineHeight: 20 },
+  sectionTitle: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 15 },
+  methods: { gap: 9 },
+  method: { flexDirection: 'row', alignItems: 'center', minHeight: 82, padding: 12, gap: 12, backgroundColor: Colors.surface, borderColor: Colors.border, borderWidth: 1, borderRadius: 8 },
+  methodSelected: { borderColor: Colors.coral, backgroundColor: '#FF323A0D' },
+  unavailable: { opacity: 0.48 },
   pressed: { opacity: 0.75 },
-  methodIcon: {
-    alignItems: 'center',
-    backgroundColor: Colors.surfaceSoft,
-    borderRadius: 14,
-    height: 44,
-    justifyContent: 'center',
-    width: 44,
-  },
+  methodIcon: { width: 42, height: 42, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surfaceSoft },
   methodIconSelected: { backgroundColor: Colors.coralSoft },
-  methodCopy: { flex: 1 },
-  methodTitleRow: { alignItems: 'center', flexDirection: 'row', gap: 7 },
-  methodTitle: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 12 },
-  methodSubtitle: { color: Colors.textMuted, fontFamily: Fonts.regular, fontSize: 9, marginTop: 3 },
-  badge: { backgroundColor: Colors.greenSoft, borderRadius: Radius.pill, paddingHorizontal: 7, paddingVertical: 3 },
-  badgeText: { color: Colors.green, fontFamily: Fonts.semiBold, fontSize: 7 },
-  radio: {
-    alignItems: 'center',
-    borderColor: Colors.border,
-    borderRadius: 10,
-    borderWidth: 1,
-    height: 21,
-    justifyContent: 'center',
-    width: 21,
-  },
-  radioSelected: { backgroundColor: Colors.coralAction, borderColor: Colors.coralAction },
-  sectionHeadingRow: { alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'space-between' },
-  optional: { color: Colors.textFaint, fontFamily: Fonts.regular, fontSize: 8 },
-  limitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  limitPill: { backgroundColor: Colors.surface, borderColor: Colors.border, borderRadius: Radius.pill, borderWidth: 1, flexGrow: 1, minWidth: 74, paddingHorizontal: 12, paddingVertical: 11 },
-  limitSelected: { backgroundColor: Colors.coralAction, borderColor: Colors.coralAction },
-  limitText: { color: Colors.textMuted, fontFamily: Fonts.semiBold, fontSize: 10, textAlign: 'center' },
-  limitTextSelected: { color: Colors.white },
-  summaryCard: { backgroundColor: Colors.surface, borderColor: Colors.borderSoft, borderRadius: Radius.large, borderWidth: 1, gap: 11, marginTop: 7, padding: 16 },
-  summaryHeader: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  summaryIcon: { alignItems: 'center', backgroundColor: Colors.coralSoft, borderRadius: 13, height: 42, justifyContent: 'center', width: 42 },
-  summaryCopy: { flex: 1 },
-  summaryTitle: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 12 },
-  summarySubtitle: { color: Colors.textMuted, fontFamily: Fonts.regular, fontSize: 9, marginTop: 2 },
-  separator: { backgroundColor: Colors.borderSoft, height: 1 },
-  summaryRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  summaryLabel: { color: Colors.textMuted, fontFamily: Fonts.regular, fontSize: 10 },
-  summaryValue: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 10 },
-  paymentNote: { alignItems: 'flex-start', flexDirection: 'row', gap: 9, paddingHorizontal: 5 },
-  paymentNoteText: { color: Colors.textFaint, flex: 1, fontFamily: Fonts.regular, fontSize: 8, lineHeight: 13 },
-  error: { backgroundColor: '#FF4D5718', borderRadius: Radius.medium, color: Colors.danger, fontFamily: Fonts.medium, fontSize: 10, padding: 11, textAlign: 'center' },
-  terms: { color: Colors.textFaint, fontFamily: Fonts.regular, fontSize: 8, textAlign: 'center' },
-  missing: { flex: 1, gap: 20, justifyContent: 'center', padding: 24 },
-  missingTitle: { color: Colors.text, fontFamily: Fonts.bold, fontSize: 20, textAlign: 'center' },
+  methodCopy: { flex: 1, minWidth: 0, gap: 4 },
+  methodHeading: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  methodTitle: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 14, flexShrink: 1 },
+  demoTag: { color: Colors.yellow, fontFamily: Fonts.semiBold, fontSize: 10 },
+  caption: { color: Colors.textFaint, fontFamily: Fonts.regular, fontSize: 11, lineHeight: 17 },
+  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, borderColor: Colors.textFaint, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  radioSelected: { borderColor: Colors.coralAction, backgroundColor: Colors.coralAction },
+  sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginTop: 9 },
+  amounts: { flexDirection: 'row', gap: 8 },
+  amount: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 8, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, paddingHorizontal: 4 },
+  amountSelected: { borderColor: Colors.coral, backgroundColor: Colors.coralSoft },
+  amountText: { color: Colors.textMuted, fontFamily: Fonts.semiBold, fontSize: 13 },
+  amountSelectedText: { color: Colors.white },
+  inputGroup: { gap: 8 },
+  inputLabel: { color: Colors.textMuted, fontFamily: Fonts.medium, fontSize: 12 },
+  inputWrap: { flexDirection: 'row', alignItems: 'center', minHeight: 52, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 14, gap: 10 },
+  currency: { color: Colors.textMuted, fontFamily: Fonts.medium, fontSize: 15 },
+  input: { flex: 1, minWidth: 0, color: Colors.text, fontFamily: Fonts.medium, fontSize: 16, paddingVertical: 12 },
+  summary: { borderTopWidth: 1, borderBottomWidth: 1, borderColor: Colors.borderSoft, paddingVertical: 16, gap: 12 },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' },
+  summaryValue: { color: Colors.text, fontFamily: Fonts.medium, fontSize: 13 },
+  summaryStrong: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 16 },
+  conditionsButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 36, gap: 10 },
+  conditionsLabel: { color: Colors.textMuted, fontFamily: Fonts.medium, fontSize: 12 },
+  rotated: { transform: [{ rotate: '180deg' }] },
+  conditionsText: { color: Colors.textMuted, fontFamily: Fonts.regular, fontSize: 12, lineHeight: 20 },
+  authorized: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  authorizedText: { color: Colors.green, fontFamily: Fonts.medium, fontSize: 12, flex: 1 },
+  changeText: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 12, paddingVertical: 10 },
+  error: { color: Colors.danger, backgroundColor: '#FF4D5712', fontFamily: Fonts.medium, fontSize: 12, lineHeight: 19, borderRadius: 8, padding: 12 },
+  footer: { color: Colors.textFaint, fontFamily: Fonts.regular, fontSize: 11, lineHeight: 17, textAlign: 'center' },
+  missing: { flex: 1, justifyContent: 'center', gap: 20, padding: 24 },
+  missingTitle: { color: Colors.text, fontFamily: Fonts.semiBold, fontSize: 19, textAlign: 'center' },
 });

@@ -53,6 +53,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "preview:web:api": "node scripts/web-readonly-preview.cjs",
     "export": "expo export --platform all",
     "export:web": "expo export --platform web",
     "lint": "eslint .",

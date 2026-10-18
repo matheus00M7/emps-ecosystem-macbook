@@ -39,6 +39,16 @@ test('trata 204 como operação sem conteúdo', async () => {
   assert.equal(await createClient().logout('refresh-token'), undefined);
 });
 
+test('troca de pagamento cancela somente a autorizacao informada na API', async () => {
+  const calls: { url: string; method: string }[] = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), method: init?.method ?? 'GET' });
+    return new Response(null, { status: 204 });
+  };
+  await createClient().cancelPaymentIntent('intent/test');
+  assert.deepEqual(calls, [{ url: 'http://localhost:3001/mobile/v1/payment-intents/intent%2Ftest/cancel', method: 'POST' }]);
+});
+
 test('rejeita JSON inválido em vez de criar um objeto fantasma', async () => {
   globalThis.fetch = async () =>
     new Response('{resposta-incompleta', {
