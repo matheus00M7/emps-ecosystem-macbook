@@ -1,3 +1,4 @@
+import {minimumPaymentCode} from './payment-minimum';
 import {assertPrepaidAmount} from './prepaid-domain';
 import {paymentDisposition,recordPaymentDisposition} from './payment-disposition';
 import {lifecycleOf,newLifecycleSnapshot,stopLifecycle,presentLifecycle,budgetPrice,assertNoPendingRemoval,chargeLifecycleEnabled,assertChargePolicySelection,CHARGE_POLICY_VERSION} from './charge-lifecycle';
@@ -707,6 +708,7 @@ export class MobileService {
   }
 
   private presentSession(session: SessionRecord) {
+    const pendingMinimum = session.status === 'WAITING_PAYMENT' && session.payments.find(p => p.status === 'PENDING' && p.failureCode === minimumPaymentCode);
     const paid = session.payments.find(p => p.status === 'APPROVED');
     const stopResult=session.commands.find(c=>c.type==='STOP_CHARGING'&&c.status==='COMPLETED')?.responsePayload;
     const disposition=stopResult&&typeof stopResult==='object'&&!Array.isArray(stopResult)?stopResult.paymentDisposition:undefined;
@@ -730,6 +732,7 @@ export class MobileService {
       PaymentMethod.CARD;
     const status = mobileSessionStatus(session.status);
     return {
+      ...(pendingMinimum ? {paymentPending:{reason:minimumPaymentCode,message:pendingMinimum.failureMessage}} : {}),
       ...(paid ? { receipt: {
         paymentId: String(paid.id), transactionId: paid.code,
         paidAt: paid.paidAt?.toISOString() ?? null, method: String(paid.method).toLowerCase(), status: 'approved',
@@ -1420,6 +1423,8 @@ export class MobileService {
                 : PaymentStatus.PENDING,
             amountReceived: approved ? disposition?.capturedAmount ?? settlement.capturedAmount : null,
             ...(disposition?.refundStatus==="SIMULATED"?{refundedAt:new Date()}:{}),
+            failureCode: settlement.failureCode ?? null,
+            failureMessage: settlement.failureMessage ?? null,
             provider: settlement.provider.toLowerCase(),
             providerPaymentId: settlement.externalPaymentId,
             paidAt: approved ? new Date() : null,

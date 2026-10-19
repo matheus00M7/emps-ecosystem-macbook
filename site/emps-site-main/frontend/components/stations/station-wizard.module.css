@@ -171,3 +171,5 @@
   .footerNavigation > button { flex: 1; }
   .administration { padding: 16px; }
 }
+
+.addressSearch{display:grid;gap:10px;margin:16px 0 20px;min-width:0}.addressSearch>label{font-weight:600}.addressSearch small{line-height:1.6;color:var(--muted)}.addressSearchInput{display:flex;gap:8px}.addressSearchInput input{flex:1;min-width:0;padding:12px;border:1px solid var(--border,#344054);border-radius:10px;background:var(--surface,#141b27);color:inherit}.addressSuggestions{list-style:none;padding:0;margin:0;border:1px solid var(--border,#344054);border-radius:10px;overflow:hidden}.addressSuggestions button{width:100%;padding:12px;text-align:left;background:transparent;color:inherit;border:0;cursor:pointer;line-height:1.5}.addressSuggestions button:hover,.addressSuggestions button:focus-visible{background:var(--surface-2)}.addressSuggestions li+li{border-top:1px solid var(--border,#344054)}@media(max-width:420px){.addressSearchInput{flex-wrap:wrap}.addressSearchInput input{flex-basis:100%}}

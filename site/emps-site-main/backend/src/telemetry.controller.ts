@@ -1,3 +1,4 @@
+import {GieAccessGuard} from './gie-access';
 import {BadRequestException,Body,Controller,Get,Headers,Param,Post,Query,Req,UploadedFile,UseGuards,UseInterceptors} from '@nestjs/common';
 import {FileInterceptor} from '@nestjs/platform-express';
 import {IsArray,IsEnum,IsString,Length,ArrayMinSize,ArrayMaxSize} from 'class-validator';
@@ -19,8 +20,8 @@ export class TelemetryController {
  @Post('sources/:sourceId/verify') verify(@Req() r:AuthRequest,@Param('id') id:string,@Param('sourceId') sourceId:string,@Body() dto:VerifyDto){return this.telemetry.verifyPhysical(r.user,id,sourceId,dto.evidence)}
  @Post('sources/:sourceId/calculate') calculate(@Req() r:AuthRequest,@Param('id') id:string,@Param('sourceId') sourceId:string,@Body() dto:DeriveDto){return this.telemetry.calculate(r.user,id,sourceId,dto.parentIds)}
  @Get('history') history(@Req() r:AuthRequest,@Param('id') id:string,@Query('from') from:string,@Query('to') to:string,@Query('provenance') provenance?:DataProvenance){return this.telemetry.history(r.user,id,from,to,provenance)}
- @Get('readiness') readiness(@Req() r:AuthRequest,@Param('id') id:string){return this.telemetry.readiness(r.user,id)}
- @Get('dataset') dataset(@Req() r:AuthRequest,@Param('id') id:string,@Query('from') from:string,@Query('to') to:string,@Query('origin') origin:string,@Query('model') model?:string){return this.telemetry.dataset(r.user,id,from,to,origin,model)}
+ @Get('readiness') @UseGuards(GieAccessGuard) readiness(@Req() r:AuthRequest,@Param('id') id:string){return this.telemetry.readiness(r.user,id)}
+ @Get('dataset') @UseGuards(GieAccessGuard) dataset(@Req() r:AuthRequest,@Param('id') id:string,@Query('from') from:string,@Query('to') to:string,@Query('origin') origin:string,@Query('model') model?:string){return this.telemetry.dataset(r.user,id,from,to,origin,model)}
  @Post('import') @UseInterceptors(FileInterceptor('file',{limits:{fileSize:8*1024*1024,files:1,fields:2}}))
  import(@Req() r:AuthRequest,@Param('id') id:string,@Body() dto:ImportDto,@UploadedFile() file?:{buffer:Buffer;originalname:string}){if(!file||!['preview','commit'].includes(dto.mode))throw new BadRequestException('Arquivo e modo preview/commit obrigatórios');return this.telemetry.importHistory(r.user,id,file,dto.timezone,dto.mode==='commit')}
 }

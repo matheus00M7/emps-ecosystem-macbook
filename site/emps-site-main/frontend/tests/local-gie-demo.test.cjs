@@ -25,6 +25,7 @@ test('isolated GIE never replaces official overview telemetry or its mode',()=>{
   const official={energyFlow:{source:'official'},carregadores:[]};
   const {AdminDashboard}=load('components/dashboard/AdminDashboard.tsx',{
     react:{...React,useState:()=>[[demo,official,false,''][index++],()=>{}],useRef:v=>({current:v}),useCallback:fn=>fn,useEffect:()=>{}},
+    '@/components/energy/use-gie-access': {useGieAccess:()=>true},
     '@/components/energy/GieControls':{GieControls:()=>null},'@/components/shell/AppShell':{AppShell:()=>null},
     '@/components/realtime/RealtimeProvider':{useRealtime:()=>({changeRevision:0,connectionVersion:0,status:'disabled'})},
     '@/domain/gie':{energyFromGie:()=>{mapperCalls++;return {}; }},'./StationDashboard':{StationDashboard:()=>null},

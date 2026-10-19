@@ -1,3 +1,4 @@
+import { belowStripeMinimum, minimumPaymentCode, minimumPaymentMessage } from './payment-minimum';
 import {
   ConflictException,
   BadGatewayException,
@@ -23,6 +24,8 @@ export type GatewayPaymentIntent = {
 };
 
 export type GatewaySettlement = {
+  failureCode?: string;
+  failureMessage?: string;
   capturedAmount: number;
   externalPaymentId: string;
   provider: "SANDBOX" | "STRIPE";
@@ -213,6 +216,10 @@ export class PaymentGatewayService {
         if(intent.status==='requires_capture')intent=await this.stripe.paymentIntents.cancel(intent.id,{}, {idempotencyKey:'emps-zero-release-'+intent.id});
         if(intent.status!=='canceled')throw new ConflictException('Não foi possível liberar a autorização');
         return {capturedAmount:0,externalPaymentId:intent.id,provider:'STRIPE',status:'approved'};
+      }
+      if (input.method !== 'pix' && intent.capture_method === 'manual' &&
+          intent.status === 'requires_capture' && belowStripeMinimum(input.amount)) {
+        return {capturedAmount:0, externalPaymentId:intent.id, provider:'STRIPE', status:'pending', failureCode:minimumPaymentCode, failureMessage:minimumPaymentMessage};
       }
       if(!Number.isSafeInteger(amountInCents)||amountInCents<50)throw new BadRequestException("Valor abaixo do mínimo do cartão; total preservado");
 

@@ -31,16 +31,18 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   async function handleLogin() {
+    if (loading) return;
+    if (!email.trim() || !password) {setError('Informe seu e-mail e sua senha EMPS.'); return;}
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await login(email.trim(), password);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       if (qrToken) router.replace(`/c/${encodeURIComponent(qrToken)}`);
       else if (chargerId) router.replace(`/charger/${chargerId}`);
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Não foi possível entrar.');
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally {
       setLoading(false);
     }
@@ -81,6 +83,7 @@ export default function LoginScreen() {
                   autoComplete="email"
                   icon={Mail}
                   keyboardType="email-address"
+                  editable={!loading}
                   label="E-mail"
                   onChangeText={setEmail}
                   placeholder="voce@email.com"
@@ -89,6 +92,7 @@ export default function LoginScreen() {
                 <AppInput
                   autoComplete="current-password"
                   icon={LockKeyhole}
+                  editable={!loading}
                   label="Senha"
                   onChangeText={setPassword}
                   onSubmitEditing={handleLogin}
@@ -114,9 +118,10 @@ export default function LoginScreen() {
                   </Pressable>
                 </View>
 
-                {error ? <Text style={styles.error}>{error}</Text> : null}
+                {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>{error}</Text> : null}
                 <AppButton loading={loading} onPress={handleLogin} title="Entrar" />
 
+                <Text style={styles.muted}>Use a mesma conta criada no site de recarga EMPS. O login do Expo é separado.</Text>
                 <View style={styles.registerRow}>
                   <Text style={styles.muted}>Ainda não tem uma conta?</Text>
                   <Link

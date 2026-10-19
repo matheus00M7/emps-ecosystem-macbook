@@ -73,6 +73,7 @@ export function normalizeChargingSession(value: unknown): ChargingSession | null
     ...(value.requestedPowerKw !== undefined ? {requestedPowerKw:Math.max(0,finiteNumber(value.requestedPowerKw))}:{}),
     ...(typeof value.managedPower === 'boolean'?{managedPower:value.managedPower}:{}),
     ...(typeof value.telemetrySource === 'string'?{telemetrySource:value.telemetrySource}:{}),
+    ...(isRecord(value.paymentPending) && value.paymentPending.reason === 'BELOW_PROVIDER_MINIMUM' && typeof value.paymentPending.message === 'string' ? {paymentPending:{reason:'BELOW_PROVIDER_MINIMUM' as const,message:value.paymentPending.message}} : {}),
     ...(typeof value.tariffVersion === 'string'?{tariffVersion:value.tariffVersion,billing:value.billing as ChargingSession['billing'],billingFrozen:value.billingFrozen===true}:{}),
     ...(typeof value.disconnectedAt==='string'?{disconnectedAt:value.disconnectedAt}:{}),
     durationSeconds: Math.max(0, Math.floor(finiteNumber(value.durationSeconds))),

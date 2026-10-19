@@ -1,3 +1,4 @@
+import { belowStripeMinimum, minimumPaymentCode, minimumPaymentMessage } from './payment-minimum';
 import {paymentDisposition,recordPaymentDisposition} from './payment-disposition';
 import {lifecycleOf,presentLifecycle,disconnectLifecycle} from './charge-lifecycle';
 import {chargeActor,chargeOwner,type ChargeSubject} from './charge-subject';
@@ -46,6 +47,26 @@ export class SessionBillingService {
   if(!s.paymentIntent)throw new ConflictException('Pagamento disponível pelo caixa');
   const provider=s.paymentIntent.provider?.replace('_deferred','');
   const key=`v1-session-${id}`;
+  if(provider==='stripe' && belowStripeMinimum(b.customer.total_amount)) {
+   const finished=await this.db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT id FROM charging_sessions WHERE id=${s.id} FOR UPDATE`;
+    const current=await tx.chargingSession.findUniqueOrThrow({where:{id:s.id}});
+    if(current.status==='FINISHED')return true;
+    if(current.status!=='WAITING_PAYMENT')throw new ConflictException('Pagamento em processamento');
+    const existing=await tx.payment.findUnique({where:{idempotencyKey:key}});
+    if(existing && (!['PENDING','REJECTED','CANCELED'].includes(existing.status) || existing.paidAt ||
+       new Prisma.Decimal(existing.amountReceived??0).gt(0) || existing.sessionId!==s.id ||
+       !new Prisma.Decimal(existing.amount).eq(b.customer.total_amount))) {
+      throw new ConflictException('Pagamento existente requer conciliação; o registro financeiro foi preservado');
+    }
+    const pending={status:'PENDING' as const,failureCode:minimumPaymentCode,failureMessage:minimumPaymentMessage};
+    await tx.payment.upsert({where:{idempotencyKey:key},create:{sessionId:s.id,paymentIntentId:s.paymentIntentId,code:'PAY-'+randomUUID(),method:'CARD',provider:'stripe',amount:b.customer.total_amount,...pending,idempotencyKey:key},update:pending});
+    return false;
+   });
+   if(finished)return {status:'approved',provider:'stripe'};
+   this.publish(s);
+   return {status:'pending',provider:'stripe',reason:'BELOW_PROVIDER_MINIMUM',amountDue:b.customer.total_amount,message:minimumPaymentMessage};
+  }
   let reserved: Stripe.PaymentIntent | null = null;
   let finalExternalId = s.paymentIntent.providerIntentId?.startsWith("pi_") ? s.paymentIntent.providerIntentId : undefined;
   if (provider === "stripe" && finalExternalId) {

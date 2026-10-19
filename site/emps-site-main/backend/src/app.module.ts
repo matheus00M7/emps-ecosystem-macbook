@@ -1,3 +1,4 @@
+import { GieAccessGuard } from './gie-access';
 import {RfidController} from './rfid.controller';
 import {ChargeLifecycleService} from './charge-lifecycle.service';
 import {ChargeLifecycleController,DeviceChargeLifecycleController} from './charge-lifecycle.controller';
@@ -87,7 +88,7 @@ function jwtSecret() {
     ChargerProvisioningDeviceController,
     DashboardController,
   ],
-  providers: [ChargeLifecycleService,TelemetryService,ReservationsService,RfidService,PrepaidBudgetService,WebChargeGuard,PhotoStorage, StationPhotosService, PlatformAccessService, PlatformStationsService, StationMembersService, NotificationGateway, SessionBillingService, GieService, LocalGieDemoService,
+  providers: [GieAccessGuard,ChargeLifecycleService,TelemetryService,ReservationsService,RfidService,PrepaidBudgetService,WebChargeGuard,PhotoStorage, StationPhotosService, PlatformAccessService, PlatformStationsService, StationMembersService, NotificationGateway, SessionBillingService, GieService, LocalGieDemoService,
     AdminOperationsService,
     MobileService,
     PaymentGatewayService,

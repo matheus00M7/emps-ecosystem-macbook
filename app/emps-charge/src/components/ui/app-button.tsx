@@ -35,6 +35,7 @@ export function AppButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={title}
+      accessibilityState={{disabled: !!(disabled || loading), busy: !!loading}}
       accessibilityHint={accessibilityHint}
       disabled={disabled || loading}
       onPress={onPress}
@@ -78,7 +79,7 @@ const styles = StyleSheet.create({
     borderColor: `${Colors.coral}66`,
     borderWidth: 1,
   },
-  label: { color: Colors.white, fontFamily: Fonts.semiBold, fontSize: 15 },
+  label: { flexShrink: 1, textAlign: 'center', color: Colors.white, fontFamily: Fonts.semiBold, fontSize: 15 },
   ghostLabel: { color: Colors.text },
   pressed: { opacity: 0.82, transform: [{ scale: 0.985 }] },
   disabled: { opacity: 0.5 },

@@ -10,7 +10,10 @@ import type { Charger, DashboardData } from "@/domain/emps";
 import { api, isDemoMode, isAccessDenied } from "@/services/emps-api";
 import { StationDashboard, type StationInfo } from "./StationDashboard";
 
+import { useGieAccess } from '@/components/energy/use-gie-access';
+
 export function AdminDashboard({ stationId, station }: { stationId: string; station?: StationInfo }) {
+  const gieAllowed = useGieAccess();
   const [gie, setGie] = useState<GieState | null>(null);
   const [data, setData] = useState<DashboardData | null>(() => api.cachedDashboard(stationId)?.value ?? null);
   const [loading, setLoading] = useState(() => !api.cachedDashboard(stationId));
@@ -93,12 +96,12 @@ export function AdminDashboard({ stationId, station }: { stationId: string; stat
     setGie(String(state.station_id) === stationId ? state : null);
   }, [stationId]);
   const refresh = useCallback(() => { void load(true); }, [load]);
-  const operationalGie = gie?.online && !gie.isolated ? gie : null;
+  const operationalGie = gieAllowed && gie?.online && !gie.isolated ? gie : null;
 
   return <AppShell eyebrow="Minhas instalacoes" showEmpsHeaderLogo title="Painel do Eletroposto">
     {loading ? <div className="loading-panel"><RefreshCw className="spin" size={20} aria-hidden="true" />Carregando painel EMPS</div>
       : error || !data ? <div className="loading-panel" role="alert"><AlertTriangle size={20} aria-hidden="true" /><span>{error || "A API nao devolveu os dados do painel."}</span><button className="table-action" onClick={() => void load()} type="button"><RefreshCw size={14} aria-hidden="true" />Tentar novamente</button></div>
-      : <StationDashboard stationId={stationId} initialStation={station} data={data} telemetry={operationalGie ? energyFromGie(operationalGie) : data.energyFlow} gieState={gie} gieMode={operationalGie?.mode} onChargersChange={updateChargers} onRefresh={refresh} gieControls={!isDemoMode ? <GieControls initialStationId={stationId} onState={receiveGie} /> : null} />}
+      : <StationDashboard stationId={stationId} initialStation={station} data={gieAllowed ? data : {...data, alertas: data.alertas.filter(alert => alert.origem !== 'GIE')}} telemetry={operationalGie ? energyFromGie(operationalGie) : data.energyFlow} gieState={gie} gieMode={operationalGie?.mode} onChargersChange={updateChargers} onRefresh={refresh} gieAllowed={gieAllowed} gieControls={gieAllowed && !isDemoMode ? <GieControls initialStationId={stationId} onState={receiveGie} /> : null} />}
   </AppShell>;
 }
 

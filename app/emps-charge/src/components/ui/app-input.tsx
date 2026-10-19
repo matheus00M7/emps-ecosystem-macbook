@@ -17,13 +17,14 @@ type AppInputProps = TextInputProps & {
   error?: string;
 };
 
-export function AppInput({ label, icon: Icon, error, secureTextEntry, ...props }: AppInputProps) {
+export function AppInput({ label, icon: Icon, error, secureTextEntry, style, onFocus, onBlur, ...props }: AppInputProps) {
+  const [focused, setFocused] = useState(false);
   const [isSecure, setIsSecure] = useState(Boolean(secureTextEntry));
 
   return (
     <View style={styles.wrapper}>
       <Text style={styles.label}>{label}</Text>
-      <View style={[styles.field, error && styles.fieldError]}>
+      <View style={[styles.field, focused && styles.fieldFocused, error && styles.fieldError]}>
         <Icon color={Colors.textMuted} size={19} strokeWidth={2} />
         <TextInput
           {...props}
@@ -31,12 +32,17 @@ export function AppInput({ label, icon: Icon, error, secureTextEntry, ...props }
           placeholderTextColor={Colors.textFaint}
           secureTextEntry={isSecure}
           selectionColor={Colors.coral}
-          style={styles.input}
+          editable={props.editable}
+          onFocus={event => {setFocused(true); onFocus?.(event);}}
+          onBlur={event => {setFocused(false); onBlur?.(event);}}
+          style={[styles.input, style]}
         />
         {secureTextEntry ? (
           <Pressable
             accessibilityLabel={isSecure ? 'Mostrar senha' : 'Ocultar senha'}
             accessibilityRole="button"
+            accessibilityState={{disabled: props.editable === false}}
+            disabled={props.editable === false}
             hitSlop={10}
             onPress={() => setIsSecure((current) => !current)}>
             {isSecure ? (
@@ -47,7 +53,7 @@ export function AppInput({ label, icon: Icon, error, secureTextEntry, ...props }
           </Pressable>
         ) : null}
       </View>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>{error}</Text> : null}
     </View>
   );
 }
@@ -71,6 +77,7 @@ const styles = StyleSheet.create({
     minHeight: 54,
     paddingHorizontal: 17,
   },
+  fieldFocused: {borderColor: Colors.coral},
   fieldError: { borderColor: Colors.danger },
   input: {
     color: Colors.text,
