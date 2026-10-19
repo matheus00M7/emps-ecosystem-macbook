@@ -37,10 +37,10 @@ const paid = {
   lifecycle,
 };
 
-function render(session) {
+function render(session, notice = null) {
   let index = 0;
   const effects = [];
-  const states = [resolved, 'account', session, false, '20', 'card', false, false, '', false, '', ''];
+  const states = [resolved, 'account', session, false, '20', 'card', false, false, '', false, '', '', notice];
   const hooks = {
     ...React,
     useState: () => [states[index++], () => {}],
@@ -113,14 +113,39 @@ test('legacy V1 settlement action is preserved and a finished legacy session doe
   assert.ok(button(render(legacy).tree, 'Conector retirado \u00b7 finalizar pagamento'));
   const result = render({ ...paid, lifecycle: undefined });
   assert.equal(button(result.tree, 'Nova recarga').props.disabled, false);
-  assert.equal(result.effects[1](), undefined);
+  assert.equal(result.effects[2](), undefined);
 });
 
 test('paid sessions with pending removal continue refreshing until the connector is removed', () => {
   const { effects } = render(paid);
-  const cleanup = effects[1]();
+  const cleanup = effects[2]();
   assert.equal(typeof cleanup, 'function');
   cleanup();
   const removed = render({ ...paid, lifecycle: { ...lifecycle, disconnectedAt: '2026-10-13T13:01:00Z' } });
-  assert.equal(removed.effects[1](), undefined);
+  assert.equal(removed.effects[2](), undefined);
+});
+
+test('payment notices are scoped to their session and disappear after receipt',()=>{
+ const notice={sessionId:'7',message:'Pending minimum notice'};
+ assert.match(label(render({...paid,receipt:undefined},notice).tree),/Pending minimum notice/);
+ assert.doesNotMatch(label(render({...paid,id:'another',receipt:undefined},notice).tree),/Pending minimum notice/);
+ assert.doesNotMatch(label(render(paid,notice).tree),/Pending minimum notice/);
+});
+test('server pending reason is visible after reopening an unpaid session',()=>{
+ const tree=render({...paid,receipt:undefined,paymentPending:{reason:'BELOW_PROVIDER_MINIMUM',message:'Persisted pending reason'}}).tree;
+ assert.match(label(tree),/Persisted pending reason/);
+});
+test('photo replacement changes the version sent to the photo component',()=>{
+ const previous=resolved.station.photos;
+ try{resolved.station.photos=[{id:'photo-id',position:0,path:'/public/station-photos/photo-id?v=new-file'}];
+ const photos=elements(render(paid).tree,node=>node.props.id==='photo-id');
+ assert.equal(photos[0].props.version,resolved.station.photos[0].path);
+ }finally{resolved.station.photos=previous;}
+});
+test('an unmounted checkout cannot send a payment request',async t=>{
+ let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;throw Error('Must not send');});
+ const {tree,effects}=render({...paid,receipt:undefined,tariffVersion:'unit-tariff'});
+ const cleanup=effects[0]();cleanup();
+ const button=elements(tree,node=>node.type==='button'&&label(node)==='Concluir pagamento')[0];
+ assert.ok(button);await button.props.onClick();assert.equal(calls,0);
 });

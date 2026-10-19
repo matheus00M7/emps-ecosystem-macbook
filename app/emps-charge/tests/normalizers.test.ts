@@ -34,3 +34,9 @@ test('descarta sessões persistidas sem identidade válida', () => {
     [normalizeChargingSession(cachedSession)],
   );
 });
+
+test('pending payment reason survives history reload, but malformed reasons are discarded',()=>{
+ const reason={reason:'BELOW_PROVIDER_MINIMUM',message:'O valor original permanece pendente.'};
+ assert.deepEqual(normalizeChargingSession({...cachedSession,status:'payment_pending',paymentPending:reason})?.paymentPending,reason);
+ assert.equal(normalizeChargingSession({...cachedSession,paymentPending:{reason:'other',message:'invalid'}})?.paymentPending,undefined);
+});

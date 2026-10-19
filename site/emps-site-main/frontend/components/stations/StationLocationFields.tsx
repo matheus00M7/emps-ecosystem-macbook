@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Draft } from './station-types';
 import { hasPosition, positionFromMapsLink, weekdays, type DraftChange } from './station-wizard-model';
 import { WizardDisclosure, WizardField } from './StationWizardField';
+import { StationAddressSearch } from './StationAddressSearch';
 import { StationLocationMap } from './StationLocationMap';
 import { createStationGeolocation, locationFailureMessages } from './station-geolocation';
 import styles from './station-wizard.module.css';
@@ -68,6 +69,7 @@ export function StationLocationFields({ draft, onChange, issuePath, disabled = f
 
     <section className={styles.section}>
       <h2>Endereço</h2>
+      <StationAddressSearch key={String(draft.countryCode)} countryCode={draft.countryCode} onChange={onChange} disabled={disabled} onSelect={cancelLocation} />
       <div className={styles.addressFields}>
         <WizardField label="CEP" value={draft.postalCode} onChange={value => onChange('postalCode', String(value ?? '').replace(/\D/g, '').slice(0, 8))} inputMode="numeric" autoComplete="postal-code" maxLength={9} />
         <WizardField label="Rua / avenida" value={draft.street} onChange={value => onChange('street', value)} maxLength={80} autoComplete="address-line1" />

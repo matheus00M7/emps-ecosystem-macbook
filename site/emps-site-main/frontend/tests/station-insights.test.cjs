@@ -122,7 +122,7 @@ test('financial card renders unavailable costs and routes to existing payments w
 });
 test('notice card renders a real empty state and never synthesizes GIE actions', () => {
   const { StationNotices } = load('components/dashboard/StationNotices.tsx');
-  const html = renderToStaticMarkup(React.createElement(StationNotices, { alerts: [], stationId: '39', timezone: tz, now, onAll() {} }));
+  const html = renderToStaticMarkup(React.createElement(StationNotices, { alerts: [], gieAllowed: true, stationId: '39', timezone: tz, now, onAll() {} }));
   assert.match(html, /Sem avisos registrados/);
   assert.match(html, /Histórico de ações do GIE indisponível/);
   assert.doesNotMatch(html, /Redistribuiu|22 kW|11 kW/);

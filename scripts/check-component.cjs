@@ -17,10 +17,17 @@ if (component === 'api') {
     EMPS_V2_MYSQL_TEST: 'false',
     EMPS_REMOTE_DEVELOPMENT: 'false',
     EMPS_LOCAL_GIE_DEMO: 'false',
+    // Unit mocks exercise these branches. The real services/credentials above are removed
+    // and every opt-in MySQL integration test remains disabled in this child process.
+    EMPS_PHYSICAL_COMMANDS_ENABLED: 'true',
+    EMPS_EXTERNAL_PAYMENT_SIDE_EFFECTS_ENABLED: 'true',
+    EMPS_BACKGROUND_JOBS_ENABLED: 'true',
     STRIPE_SECRET_KEY: '', STRIPE_WEBHOOK_SECRET: '', STRIPE_PUBLISHABLE_KEY: '',
     OCPP_GATEWAY_URL: '', OCPP_GATEWAY_TOKEN: '', GIE_SERVICE_URL: '', GIE_SERVICE_TOKEN: '',
     JWT_SECRET: 'unit-test-placeholder-never-use-in-a-running-server',
   });
+  const testPython = path.join(root, 'gie/GIE/.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+  env.TARIFF_TEST_PYTHON = env.TARIFF_TEST_PYTHON || (fs.existsSync(testPython) ? testPython : process.platform === 'win32' ? 'python' : 'python3');
   const npmCli = process.env.npm_execpath;
   if (!npmCli || !path.isAbsolute(npmCli) || !fs.existsSync(npmCli)) {
     throw new Error('Execute npm run check:api a partir da raiz.');

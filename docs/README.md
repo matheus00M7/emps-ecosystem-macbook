@@ -1,5 +1,8 @@
 # Documentacao EMPS
 
+[Relatorio completo e continuidade no MacBook - 19/10/2026](handoff/2026-10-19/README.md).
+[Envio do codigo e relatorio para revisao](change-requests/CR-2026-10-19-001-product-cycle-publication.md).
+
 [Repositorio pessoal privado e retirada do envio incorreto](change-requests/CR-2026-10-18-002-personal-repository.md).
 
 [Publicacao para continuar no MacBook, com limites de integracao](change-requests/CR-2026-10-18-001-github-macbook.md).

@@ -64,6 +64,7 @@ export type ConsumerUser = {
 };
 
 export type ChargingSession = {
+  paymentPending?: {reason:'BELOW_PROVIDER_MINIMUM';message:string};
   lifecycle?:ChargeLifecycle;
   receipt?: { reservation?:{id:string;fee:string;startAt:string;endAt:string;provider:string|null;status:string;paymentReference:string|null;totalWithCharging:string}; disposition?:{authorizedAmount:string;consumedAmount:string;capturedAmount:string;releasedAmount:string;refundDueAmount:string;refundedAmount:string;refundStatus:string;provenance:string}; paymentId:string; transactionId:string; paidAt:string|null; method:string; status:string; amountPaid:string; energyAmount:string|null; overstayFee:string|null; provider:string; providerReference?:string|null; sandbox?:boolean; tariffVersion?:string|null; effectiveRate?:string|null; fixedFee?:string|null; durationSeconds?:number|null; energyKwh?:string };
   tariffVersion?:string;

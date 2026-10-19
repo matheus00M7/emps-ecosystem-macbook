@@ -2,7 +2,8 @@
 
 Site de operacao, aplicativo de recarga, API e gerenciamento inteligente de
 energia em um unico repositorio. Esta copia inclui o trabalho consolidado ate
-18/10/2026, incluindo as revisoes do app de 15 e 16/10. O projeto ainda e um
+19/10/2026, incluindo as revisoes do app de 15 e 16/10 e o ciclo de produto
+revisado no MacBook. O projeto ainda e um
 prototipo: publicacao de codigo nao equivale a
 deploy, homologacao de equipamentos ou integracao oficial com a GoodWe.
 
@@ -81,6 +82,9 @@ Os pacotes sao instalados dentro de cada componente, usando seus lockfiles.
 Nao e necessario executar `npm install` na raiz.
 
 ## Documentacao
+
+- [Relatorio completo e continuidade do trabalho de 19/10](docs/handoff/2026-10-19/README.md)
+- [Envio do ciclo de produto e relatorio para revisao](docs/change-requests/CR-2026-10-19-001-product-cycle-publication.md)
 
 - [Indice dos guias](docs/README.md)
 - [Arquitetura](ARCHITECTURE.md)

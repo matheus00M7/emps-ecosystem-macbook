@@ -41,12 +41,12 @@ export default function RegisterScreen() {
     setError('');
     try {
       await register(name, email, password, passwordConfirmation, accepted);
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       if (qrToken) router.replace(`/c/${encodeURIComponent(qrToken)}`);
       else if (chargerId) router.replace(`/charger/${chargerId}`);
     } catch (registerError) {
       setError(registerError instanceof Error ? registerError.message : 'Não foi possível criar a conta.');
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally {
       setLoading(false);
     }

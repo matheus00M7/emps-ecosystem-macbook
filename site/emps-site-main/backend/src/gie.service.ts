@@ -1,3 +1,4 @@
+import { GieAccessGuard } from './gie-access';
 import { PlatformAccessService } from './platform-access.service';
 import { StationScoped } from './auth';
 import { BadGatewayException, Body, Controller, Get, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit, Param, Post, Req, UseGuards } from '@nestjs/common';
@@ -119,7 +120,7 @@ export class GieService implements OnModuleInit, OnModuleDestroy {
 class GieModeDto { @IsIn(['NORMAL','SIMULATION','PRESENTATION','MANUAL_DEMO']) mode!: string; }
 class GieEventDto { @IsString() event!: string; }
 class GieMappingDto { @IsString() chargerId!: string; @IsInt() @Min(1) @Max(4) evseSlot!: number; }
-@Controller('stations/:stationId/gie') @StationScoped() @UseGuards(JwtGuard,RolesGuard) @Roles(Role.ADMIN,Role.OPERATOR)
+@Controller('stations/:stationId/gie') @StationScoped() @UseGuards(JwtGuard,GieAccessGuard,RolesGuard) @Roles(Role.ADMIN,Role.OPERATOR)
 export class GieController {
   constructor(private readonly gie:GieService,private readonly db:PrismaService,private readonly access:PlatformAccessService,private readonly localDemo:LocalGieDemoService){}
   @Get('state') async state(@Req() req:AuthRequest,@Param('stationId') id:string){if(this.localDemo.matches(id))return this.localDemo.read(req.user,id);await this.gie.allowed(req.user,id);return this.gie.refresh();}

@@ -27,10 +27,11 @@ const tabs: { id: Tab; label: string }[] = [{ id: 'dashboard', label: 'Dashboard
 const number = (value: number | null | undefined, digits = 2) => value == null ? '--' : value.toLocaleString('pt-BR', { maximumFractionDigits: digits });
 const provenanceName = (value?: string) => ({ MEASURED: 'Medido', IMPORTED: 'Importado', SIMULATED: 'Simulado', CALCULATED: 'Calculado', FORECAST: 'Previsão', UNKNOWN: 'Origem não informada' })[value ?? 'UNKNOWN'] ?? value;
 
-export function StationDashboard({ stationId: requestedStationId, initialStation, data, telemetry, gieMode, gieState, gieControls, onChargersChange, onRefresh }: {
+export function StationDashboard({ stationId: requestedStationId, initialStation, data, telemetry, gieMode, gieState, gieControls, gieAllowed = false, onChargersChange, onRefresh }: {
   stationId?: string;
   initialStation?: StationInfo;
   data: DashboardData; telemetry: EnergyFlowTelemetry; gieControls: ReactNode;
+  gieAllowed?: boolean;
   gieMode?: string;
   gieState?: GieState | null;
   onChargersChange: (update: SetStateAction<Charger[]>) => void; onRefresh: () => void;
@@ -40,6 +41,7 @@ export function StationDashboard({ stationId: requestedStationId, initialStation
   const [station, setStation] = useState<StationInfo | null>(initialStation ?? null);
   const [stationError, setStationError] = useState('');
   const [tab, setTab] = useState<Tab>('dashboard');
+  const visibleTab = !gieAllowed && tab === 'intelligence' ? 'dashboard' : tab;
   const [scene, setScene] = useState(true);
   const [chartView, setChartView] = useState<ChartView>('power');
   const [day, setDay] = useState(() => localDay(new Date(), 'America/Sao_Paulo'));
@@ -91,11 +93,11 @@ export function StationDashboard({ stationId: requestedStationId, initialStation
 
   return <div className={styles.root}>
     <nav className={styles.breadcrumb} aria-label="Navegação da instalação"><Link href="/stations">Minhas instalações</Link><ChevronRight size={12} aria-hidden="true" /><span>Painel da instalação</span></nav>
-    <div className={styles.stationHeader}><Link href="/stations" aria-label="Voltar para minhas instalações" title="Voltar para minhas instalações"><ArrowLeft size={23} /></Link><span className={styles.privateBadge}>{station?.visibility === 'PUBLIC' ? 'Pública' : 'Privada'}</span><h1>{station?.name ?? 'Instalação EMPS'}</h1><span className={styles.statusBadge} data-active={station?.status === 'ACTIVE'}>{({ ACTIVE: 'Em operação', DRAFT: 'Rascunho', PENDING: 'Aguardando', SUSPENDED: 'Suspensa', REJECTED: 'Rejeitada', ARCHIVED: 'Arquivada' } as Record<string, string>)[station?.status ?? ''] ?? station?.status ?? 'Carregando'}</span><span className={styles.networkBadge}><Cable size={12} /> GIE</span></div>
+    <div className={styles.stationHeader}><Link href="/stations" aria-label="Voltar para minhas instalações" title="Voltar para minhas instalações"><ArrowLeft size={23} /></Link><span className={styles.privateBadge}>{station?.visibility === 'PUBLIC' ? 'Pública' : 'Privada'}</span><h1>{station?.name ?? 'Instalação EMPS'}</h1><span className={styles.statusBadge} data-active={station?.status === 'ACTIVE'}>{({ ACTIVE: 'Em operação', DRAFT: 'Rascunho', PENDING: 'Aguardando', SUSPENDED: 'Suspensa', REJECTED: 'Rejeitada', ARCHIVED: 'Arquivada' } as Record<string, string>)[station?.status ?? ''] ?? station?.status ?? 'Carregando'}</span>{gieAllowed && <span className={styles.networkBadge}><Cable size={12} /> GIE</span>}</div>
     <div className={styles.stationActions}><Link href={`/stations/${stationId}`} title="Cadastro e configurações da instalação"><Settings2 size={15} aria-hidden="true" />Configurações da instalação</Link></div>
     {stationError && <p role="alert">{stationError}</p>}
-    <div className={styles.mainTabs} role="tablist" aria-label="Monitoramento da instalação">{tabs.map(item => <button key={item.id} id={`monitor-tab-${item.id}`} type="button" role="tab" aria-selected={tab === item.id} aria-controls={`monitor-panel-${item.id}`} onClick={() => setTab(item.id)}>{item.label}{item.id === 'alarms' && data.alertas.some(alert => alert.status !== 'resolvido') && <span className={styles.alertCount}>{data.alertas.filter(alert => alert.status !== 'resolvido').length}</span>}</button>)}</div>
-    {tab === 'dashboard' && <div id="monitor-panel-dashboard" role="tabpanel" aria-labelledby="monitor-tab-dashboard">
+    <div className={styles.mainTabs} role="tablist" aria-label="Monitoramento da instalação">{tabs.filter(item => gieAllowed || item.id !== 'intelligence').map(item => <button key={item.id} id={`monitor-tab-${item.id}`} type="button" role="tab" aria-selected={visibleTab === item.id} aria-controls={`monitor-panel-${item.id}`} onClick={() => setTab(item.id)}>{item.label}{item.id === 'alarms' && data.alertas.some(alert => alert.status !== 'resolvido') && <span className={styles.alertCount}>{data.alertas.filter(alert => alert.status !== 'resolvido').length}</span>}</button>)}</div>
+    {visibleTab === 'dashboard' && <div id="monitor-panel-dashboard" role="tabpanel" aria-labelledby="monitor-tab-dashboard">
       <div className={styles.weatherLine}><div><WeatherPopover forecast={forecast} timezone={timezone} city={`${station?.city ?? ''}${station?.state ? `, ${station.state}` : ''}`} measuredTemperature={numeric(liveWeather?.outsideTemperatureC)} measuredHumidity={numeric(liveWeather?.relativeHumidityPercent)} /><span><Droplets size={13} /> {number(numeric(liveWeather?.relativeHumidityPercent) ?? weather?.humidity, 0)}%</span>{weather && <span>Vento {number(weather.wind, 0)} km/h</span>}<span>{station?.city}{station?.state ? `, ${station.state}` : ''}</span>{liveWeather ? <span>Clima medido</span> : !weather && <span>Clima indisponível</span>}</div><div><span>Atualização: {telemetry?.updatedAt ? new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(telemetry.updatedAt)) : '--'}</span><button className={styles.iconButton} type="button" aria-label="Atualizar painel" title="Atualizar painel" onClick={refresh}><RefreshCw size={17} /></button></div></div>
       <div className={styles.topGrid}>
         <section className={styles.flowSection} aria-label="Fluxo de energia">
@@ -112,7 +114,7 @@ export function StationDashboard({ stationId: requestedStationId, initialStation
             ] as const).map(([label, val, unit, Icon, color]) => <div key={label}><Icon size={20} style={{ color }} /><div><strong data-unknown={val === null}>{val === null ? 'Sem dados' : typeof val === 'string' ? val : number(val)} {val !== null && <small>{unit}</small>}</strong><span>{label}</span></div></div>)}</div>
             <p className={styles.insightNote}>{sources.find(item => item.key === currentSource)?.label ?? 'Histórico indisponível'} · kWh estimados no período por integração de leituras válidas.</p>
           </section>
-          <StationNotices alerts={data.alertas} stationId={stationId} timezone={timezone} now={now} gie={gieState} onAll={() => setTab('alarms')} />
+          <StationNotices alerts={data.alertas} stationId={stationId} timezone={timezone} now={now} gie={gieAllowed ? gieState : null} gieAllowed={gieAllowed} onAll={() => setTab('alarms')} />
         </div>
       </div>
       <div className={styles.historySource}><label>Fonte <select aria-label="Fonte do histórico" value={currentSource ?? ''} onChange={event => setSource(event.target.value)}><option value="">Dados da instalação</option>{sources.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>{history.truncated && <span role="status">Período parcial: reduza o intervalo para consultar todas as leituras.</span>}<span>{timezone}</span></div>
@@ -122,9 +124,9 @@ export function StationDashboard({ stationId: requestedStationId, initialStation
       </div>
       <div className={styles.operationalStrip}>{[[BatteryCharging, 'Sessões ativas', String(data.resumo.sessoesAtivas)], [BatteryCharging, 'Ocupação atual', `${data.carregadores.length ? number(active / data.carregadores.length * 100, 0) : '0'}%`], [Zap, 'Disponíveis', String(available)], [CircleDollarSign, 'Ticket · sessões encerradas', formatCurrency(data.resumo.ticketMedio)]].map(([Icon, label, val]) => { const Symbol = Icon as typeof Zap; return <div key={String(label)}><Symbol size={20} /><span>{String(label)}</span><strong>{String(val)}</strong></div>; })}</div>
     </div>}
-    {tab === 'devices' && <section id="monitor-panel-devices" role="tabpanel" aria-labelledby="monitor-tab-devices" className={styles.panel}><div className={styles.panelHeading}><h2>Carregadores da instalação</h2><span>{data.carregadores.length} dispositivos</span></div><ChargerVisualBoard chargers={data.carregadores} onChargersChange={onChargersChange} scrollAfter={6} /><SessionTable data={data} /></section>}
-    {tab === 'alarms' && <section id="monitor-panel-alarms" role="tabpanel" aria-labelledby="monitor-tab-alarms" className={styles.panel}><AlarmTable data={data} timezone={timezone} /></section>}
-    <section id="monitor-panel-intelligence" role="tabpanel" aria-labelledby="monitor-tab-intelligence" hidden={tab !== 'intelligence'} className={styles.panel}><div className={styles.panelHeading}><h2>Distribuição inteligente</h2></div>{gieControls}</section>
+    {visibleTab === 'devices' && <section id="monitor-panel-devices" role="tabpanel" aria-labelledby="monitor-tab-devices" className={styles.panel}><div className={styles.panelHeading}><h2>Carregadores da instalação</h2><span>{data.carregadores.length} dispositivos</span></div><ChargerVisualBoard chargers={data.carregadores} onChargersChange={onChargersChange} scrollAfter={6} /><SessionTable data={data} /></section>}
+    {visibleTab === 'alarms' && <section id="monitor-panel-alarms" role="tabpanel" aria-labelledby="monitor-tab-alarms" className={styles.panel}><AlarmTable data={data} timezone={timezone} /></section>}
+    {gieAllowed && <section id="monitor-panel-intelligence" role="tabpanel" aria-labelledby="monitor-tab-intelligence" hidden={visibleTab !== 'intelligence'} className={styles.panel}><div className={styles.panelHeading}><h2>Distribuição inteligente</h2></div>{gieControls}</section>}
   </div>;
 }
 

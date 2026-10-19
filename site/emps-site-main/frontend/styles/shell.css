@@ -686,3 +686,7 @@
   z-index: 60;
 }
 
+
+.sidebar-product-name{display:grid;gap:4px;font-size:19px;letter-spacing:.08em;color:var(--text)}.sidebar-product-name small{font-size:10px;font-weight:400;letter-spacing:.02em;color:var(--muted)}.sidebar-resources{max-height:32vh;overflow-y:auto}.sidebar-resources .sidebar-submenu-item{display:flex;align-items:center;justify-content:space-between;gap:8px}.sidebar .nav-list{min-height:0;overflow-y:auto}.sidebar .nav-section--emps{border-top:0;padding-top:8px}
+
+.sidebar .sidebar-footer{flex:0 0 auto}.sidebar-product-name{text-align:center}.sidebar .rail-brand .emps-logo{color:var(--coral)}

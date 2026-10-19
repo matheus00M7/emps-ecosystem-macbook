@@ -1,3 +1,4 @@
+import {payOwnedSession} from '@/services/session-payment';
 import {confirmProviderPayment} from '@/services/payment-sheet';
 import { CheckoutAuthorization, type CheckoutInput } from '@/services/checkout-authorization';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1019,24 +1020,8 @@ export function AppProvider({ children }: PropsWithChildren) {
     const epoch=authenticationEpochRef.current,uid=authenticatedUserIdRef.current;
     const session=history.find(row=>row.id===id);
     if(!session)throw new Error('Sessao nao encontrada. Atualize o historico antes de pagar.');
-    if(session.status==='completed')return true;
-    if(!session.lifecycle)await api.disconnectSession(id);
-    if(!isAuthenticationCurrent(epoch,uid))return false;
-    await refreshHistory();
-    const payment=await api.paySession(id);
-    if(payment.status==='requires_action'){
-      if(!payment.providerClientSecret)throw new Error('Stripe não retornou os dados para confirmação.');
-      const paymentCharger=getCharger(session.chargerId) ?? await api.charger(session.chargerId);
-      const result=await confirmProviderPayment(payment.providerClientSecret,paymentCharger.paymentOptions?.stripePublishableKey);
-      if(result?.canceled)return false;
-    }
-    for(let i=0;i<10;i++){
-      if(!isAuthenticationCurrent(epoch,uid))return false;
-      const rows=await refreshHistory();
-      if(rows.find(s=>s.id===id)?.status==='completed')return true;
-      await new Promise(r=>setTimeout(r,600));
-    }
-    return false;
+    return payOwnedSession({session,api,refreshHistory,getCharger,confirm:confirmProviderPayment,
+      isCurrent:()=>isAuthenticationCurrent(epoch,uid)});
   },[history,isAuthenticationCurrent,refreshHistory,getCharger]);
   const finishSession = useCallback(async () => {
     if (!activeSession) throw new Error('Nenhuma recarga em andamento.');

@@ -58,7 +58,8 @@ test('overlapping dashboard refreshes share the current read instead of queuing 
   const hooks = { ...React, useState(initial) { const index = stateIndex++; if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial; return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next; }]; }, useRef(initial) { const index = refIndex++; return refs[index] ?? (refs[index] = { current: initial }); }, useCallback: fn => fn, useEffect: fn => effects.push(fn), startTransition: fn => fn() };
   try {
     const { AdminDashboard } = load('components/dashboard/AdminDashboard.tsx', { react: hooks,
-      '@/components/energy/GieControls': { GieControls: () => null }, '@/components/shell/AppShell': { AppShell: () => null },
+      '@/components/energy/use-gie-access': {useGieAccess:()=>true},
+    '@/components/energy/GieControls': { GieControls: () => null }, '@/components/shell/AppShell': { AppShell: () => null },
       '@/components/realtime/RealtimeProvider': { useRealtime: () => ({ changeRevision: 0, connectionVersion: 0, status: 'connected' }) },
       '@/domain/gie': { energyFromGie: () => ({}) }, './StationDashboard': { StationDashboard: () => null },
       '@/services/emps-api': { isDemoMode: false, api: { cachedDashboard: () => null, dashboard: () => new Promise(resolve => requests.push(resolve)) } } });

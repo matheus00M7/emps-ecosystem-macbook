@@ -58,7 +58,7 @@ export interface MobileApi {
   cancelPaymentIntent(paymentIntentId: string): Promise<void>;
   billingQuote(id:string):Promise<{frozen:boolean;breakdown:{customer:NonNullable<ChargingSession['billing']>}}> ;
   disconnectSession(id:string):Promise<unknown>;
-  paySession(id:string):Promise<{status:string;provider:string;providerClientSecret?:string}>;
+  paySession(id:string):Promise<{status:string;provider:string;providerClientSecret?:string;reason?:string;message?:string;amountDue?:string}>;
   startCharging(input: StartChargingInput): Promise<ChargingSession>;
   activeSession(): Promise<ChargingSession | null>;
   sessionHistory(): Promise<ChargingSession[]>;
